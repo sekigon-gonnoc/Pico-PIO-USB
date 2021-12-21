@@ -31,6 +31,7 @@
 
 PIO pio_usb_tx; // colud not set to static
 static volatile uint sm_tx;
+static volatile uint offset_tx;
 static volatile uint tx_ch;
 
 PIO pio_usb_rx; // colud not set to static
@@ -43,6 +44,7 @@ static volatile uint pin_dp;
 static volatile uint pin_dm;
 
 static usb_device_t usb_device;
+static pio_usb_configuration_t current_config;
 
 static usb_setup_packet_t get_device_descriptor_report = GET_DEVICE_DESCRIPTOR_REQ_DEFAULT;
 static usb_setup_packet_t get_configuration_descriptor_report = GET_CONFIGURATION_DESCRIPTOR_REQ_DEFAULT;
@@ -53,6 +55,8 @@ static usb_setup_packet_t get_hid_report_descrpitor_request = GET_HID_REPORT_DES
 static usb_setup_packet_t set_hid_idle_request = SET_HID_IDLE_REQ_DEFAULT;
 
 static uint8_t usb_rx_buffer[128];
+
+static void configure_fullspeed_host(const pio_usb_configuration_t * c);
 
 static void __not_in_flash_func(usb_transfer)(uint8_t *data, uint16_t len) {
   dma_channel_transfer_from_buffer_now(tx_ch, data, len);
@@ -514,6 +518,8 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     } else if (reset_count > 0) {
       if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
         if (!usb_device.connected){
+          configure_fullspeed_host(&current_config);
+          usb_device.is_fullspeed = true;
           usb_device.connected = true;
           usb_device.event = EVENT_CONNECT;
         }
@@ -790,10 +796,7 @@ static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
   dma_channel_set_write_addr(ch, &pio->txf[sm], false);
 }
 
-static repeating_timer_t sof_rt;
-static pio_usb_configuration_t current_config;
-static bool timer_active;
-usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
+static void configure_fullspeed_host(const pio_usb_configuration_t * c) {
   pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
   sm_tx = c->sm_tx;
   tx_ch = c->tx_ch;
@@ -801,10 +804,17 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
   sm_rx = c->sm_rx;
   pin_dp = c->pin_dp;
   pin_dm = c->pin_dp + 1;
-  uint offset_tx = pio_add_program(pio_usb_tx, &usb_tx_program);
+
+  if (offset_tx){
+    pio_remove_program(pio_usb_tx, &usb_tx_program, offset_tx);
+  }
+
+  offset_tx = pio_add_program(pio_usb_tx, &usb_tx_program);
   usb_tx_program_init(pio_usb_tx, sm_tx, offset_tx, pin_dp);
 
-  configure_tx_channel(tx_ch, pio_usb_tx, sm_tx);
+  if (offset_rx){
+    pio_remove_program(pio_usb_rx, &usb_rx_program, offset_rx);
+  }
 
   if (c->debug_pin_rx < 0) {
     offset_rx = pio_add_program(pio_usb_rx, &usb_rx_program);
@@ -814,6 +824,10 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
   usb_rx_program_init(pio_usb_rx, sm_rx, offset_rx, pin_dp, c->debug_pin_rx);
   rx_reset_instr = pio_encode_jmp(offset_rx);
 
+  if (offset_eop){
+    pio_remove_program(pio_usb_rx, &eop_detect_program, offset_eop);
+  }
+
   if (c->debug_pin_eop < 0) {
     offset_eop = pio_add_program(pio_usb_rx, &eop_detect_program);
   } else {
@@ -821,6 +835,16 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
   }
   eop_detect_program_init(pio_usb_rx, c->sm_eop, offset_eop, pin_dp,
                           c->debug_pin_eop);
+}
+
+static repeating_timer_t sof_rt;
+static bool timer_active;
+usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
+
+  pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
+  configure_tx_channel(c->tx_ch, pio_usb_tx, c->sm_tx);
+
+  configure_fullspeed_host(c);
 
   if (c->alarm_pool != NULL) {
     alarm_pool_add_repeating_timer_us(c->alarm_pool, -1000, sof_timer, NULL,
