@@ -18,7 +18,7 @@
 ; shift to left, autopull enable
 ; pin0: dp, pin1: dm
 ; bit is captured from only dp. dm is used to detect eop
-.program usb_rx
+.program usb_rx_fs
 
 .wrap_target
 start:
@@ -63,7 +63,7 @@ bs_err:
 ; shift to left, autopull enable
 ; pin0: dp, pin1: dm
 ; bit is captured from only dp. dm is used to detect eop
-.program usb_rx_debug
+.program usb_rx_fs_debug
 .side_set 1
 
 .wrap_target
@@ -111,7 +111,7 @@ bs_err:
 .wrap
 
 ; EOP detect program
-; run at 96MHz
+; run at 96MHz/12MHz
 ; autopull disable
 .program eop_detect
 
@@ -128,7 +128,7 @@ wait_se0:
 .wrap
 
 ; EOP detect program with debug out
-; run at 96MHz
+; run at 96MHz/12MHz
 ; autopull disable
 .program eop_detect_debug
 .side_set 1
@@ -149,7 +149,7 @@ wait_se0:
 % c-sdk {
 #include "hardware/clocks.h"
 
-static inline void usb_rx_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
+static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
     pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
     gpio_pull_down(pin_dp);
     gpio_pull_down(pin_dp + 1);  // dm
@@ -157,9 +157,9 @@ static inline void usb_rx_program_init(PIO pio, uint sm, uint offset, uint pin_d
     pio_sm_config c;
 
     if (pin_debug < 0) {
-      c = usb_rx_program_get_default_config(offset);
+      c = usb_rx_fs_program_get_default_config(offset);
     } else {
-      c = usb_rx_debug_program_get_default_config(offset);
+      c = usb_rx_fs_debug_program_get_default_config(offset);
 
       pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
       pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);

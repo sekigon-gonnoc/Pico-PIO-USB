@@ -2,7 +2,7 @@
 ; USB FS NRZI transmitter
 ; Run 48 MHz, autopull
 
-.program usb_tx
+.program usb_tx_fs
 .side_set 2 opt
 
 .define J 0b01
@@ -53,7 +53,7 @@ low2:
 % c-sdk {
 #include "hardware/clocks.h"
 
-  static inline void usb_tx_program_init(PIO pio, uint sm, uint offset,
+  static inline void usb_tx_fs_program_init(PIO pio, uint sm, uint offset,
                                          uint pin_dp) {
     pio_sm_set_pins_with_mask(pio, sm, (0b01 << pin_dp), (0b11 << pin_dp));
 
@@ -62,7 +62,7 @@ low2:
     pio_gpio_init(pio, pin_dp);
     pio_gpio_init(pio, pin_dp + 1); // dm
 
-    pio_sm_config c = usb_tx_program_get_default_config(offset);
+    pio_sm_config c = usb_tx_fs_program_get_default_config(offset);
 
     // shifts to left, autopull, 8bit
     sm_config_set_out_shift(&c, true, true, 8);

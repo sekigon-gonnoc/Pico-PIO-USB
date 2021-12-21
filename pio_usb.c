@@ -25,7 +25,7 @@
 
 #define UNUSED_PARAMETER(x) (void)x
 
-#define IRQ_TX_COMP_MASK (1 << usb_tx_IRQ_COMP)
+#define IRQ_TX_COMP_MASK (1 << usb_tx_fs_IRQ_COMP)
 #define IRQ_RX_COMP_MASK (1 << IRQ_RX_EOP)
 #define IRQ_RX_ALL_MASK ((1 << IRQ_RX_EOP) | (1 << IRQ_RX_BS_ERR))
 
@@ -806,22 +806,22 @@ static void configure_fullspeed_host(const pio_usb_configuration_t * c) {
   pin_dm = c->pin_dp + 1;
 
   if (offset_tx){
-    pio_remove_program(pio_usb_tx, &usb_tx_program, offset_tx);
+    pio_remove_program(pio_usb_tx, &usb_tx_fs_program, offset_tx);
   }
 
-  offset_tx = pio_add_program(pio_usb_tx, &usb_tx_program);
-  usb_tx_program_init(pio_usb_tx, sm_tx, offset_tx, pin_dp);
+  offset_tx = pio_add_program(pio_usb_tx, &usb_tx_fs_program);
+  usb_tx_fs_program_init(pio_usb_tx, sm_tx, offset_tx, pin_dp);
 
   if (offset_rx){
-    pio_remove_program(pio_usb_rx, &usb_rx_program, offset_rx);
+    pio_remove_program(pio_usb_rx, &usb_rx_fs_program, offset_rx);
   }
 
   if (c->debug_pin_rx < 0) {
-    offset_rx = pio_add_program(pio_usb_rx, &usb_rx_program);
+    offset_rx = pio_add_program(pio_usb_rx, &usb_rx_fs_program);
   } else {
-    offset_rx = pio_add_program(pio_usb_rx, &usb_rx_debug_program);
+    offset_rx = pio_add_program(pio_usb_rx, &usb_rx_fs_debug_program);
   }
-  usb_rx_program_init(pio_usb_rx, sm_rx, offset_rx, pin_dp, c->debug_pin_rx);
+  usb_rx_fs_program_init(pio_usb_rx, sm_rx, offset_rx, pin_dp, c->debug_pin_rx);
   rx_reset_instr = pio_encode_jmp(offset_rx);
 
   if (offset_eop){
