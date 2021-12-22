@@ -15,7 +15,7 @@ https://user-images.githubusercontent.com/43873124/146642806-bdf34af6-4342-4a95-
 |Planned Features|Status|
 |-|-|
 |FS Host|✔|
-|LS Host|🚧|
+|LS Host|✔|
 |Hub support|🚧|
 |FS Device|🚧|
 
