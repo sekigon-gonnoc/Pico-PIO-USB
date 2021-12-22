@@ -508,7 +508,6 @@ static void __no_inline_not_in_flash_func(configure_lowspeed_host)(const pio_usb
 static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
   static uint8_t sof_count = 0;
-  static uint8_t reset_count =  0;
   UNUSED_PARAMETER(_rt);
 
   if (usb_device.connected && connection_check()) {
@@ -582,41 +581,10 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
 
   } else {
-    if (reset_count == 0 &&
+    if (usb_device.event == EVENT_NONE &&
         ((gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) ||
          ((gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1)))) {
-      reset_count = 80;
-    }
-
-    if (reset_count > 3) {
-      pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_dp),
-                                (0b11u << pin_dp));
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_dp),
-                                   (0b11u << pin_dp));
-    } else if (reset_count > 2) {
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_dp),
-                                   (0b11u << pin_dp));
-    } else if (reset_count > 0) {
-      if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
-        if (!usb_device.connected){
-          configure_fullspeed_host(&current_config);
-          usb_device.is_fullspeed = true;
-          usb_device.connected = true;
-          usb_device.event = EVENT_CONNECT;
-        }
-      }
-      else if (gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1) {
-        if (!usb_device.connected){
-          configure_lowspeed_host(&current_config);
-          usb_device.is_fullspeed = false;
-          usb_device.connected = true;
-          usb_device.event = EVENT_CONNECT;
-        }
-      }
-    }
-
-    if (reset_count) {
-      reset_count--;
+      usb_device.event = EVENT_CONNECT;
     }
   }
 
@@ -625,6 +593,43 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   sof_packet[3] = (calc_usb_crc5(sof_count) << 3) | (sof_count >> 8);
 
   return true;
+}
+
+static void on_device_connect() {
+  bool fullspeed_flag = false;
+
+  if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
+    fullspeed_flag = true;
+  } else if (gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1) {
+    fullspeed_flag = false;
+  }
+
+  pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_dp),
+                            (0b11u << pin_dp));
+  pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_dp),
+                               (0b11u << pin_dp));
+
+  busy_wait_ms(100);
+
+  pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_dp),
+                               (0b11u << pin_dp));
+
+  busy_wait_us(100);
+
+  if (fullspeed_flag && gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
+    if (!usb_device.connected) {
+      configure_fullspeed_host(&current_config);
+      usb_device.is_fullspeed = true;
+      usb_device.connected = true;
+    }
+  } else if (!fullspeed_flag && gpio_get(pin_dp) == 0 &&
+             gpio_get(pin_dm) == 1) {
+    if (!usb_device.connected) {
+      configure_lowspeed_host(&current_config);
+      usb_device.is_fullspeed = false;
+      usb_device.connected = true;
+    }
+  }
 }
 
 static void update_packet_crc16(usb_setup_packet_t * packet) {
@@ -937,6 +942,7 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
   return &usb_device;
 }
 
+
 static volatile bool cancel_timer_flag;
 static volatile bool start_timer_flag;
 static uint32_t int_stat;
@@ -957,6 +963,7 @@ void pio_usb_restart(void) {
 
 void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (usb_device.event == EVENT_CONNECT) {
+    on_device_connect();
     usb_device.event = EVENT_NONE;
     printf("Connected\n");
     int res = enumerate_device();
