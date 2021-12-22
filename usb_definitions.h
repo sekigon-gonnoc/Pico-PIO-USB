@@ -73,6 +73,7 @@ typedef struct {
   volatile uint8_t address;
   volatile uint16_t vid;
   volatile uint16_t pid;
+  volatile bool is_fullspeed;
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
 } usb_device_t;
