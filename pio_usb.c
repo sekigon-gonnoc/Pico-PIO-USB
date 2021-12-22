@@ -582,7 +582,6 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
 
   } else {
-    const uint pin_tx = 0;
     if (reset_count == 0 &&
         ((gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) ||
          ((gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1)))) {
@@ -590,13 +589,13 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
 
     if (reset_count > 3) {
-      pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_tx),
-                                (0b11u << pin_tx));
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_tx),
-                                   (0b11u << pin_tx));
+      pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_dp),
+                                (0b11u << pin_dp));
+      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_dp),
+                                   (0b11u << pin_dp));
     } else if (reset_count > 2) {
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_tx),
-                                   (0b11u << pin_tx));
+      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_dp),
+                                   (0b11u << pin_dp));
     } else if (reset_count > 0) {
       if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
         if (!usb_device.connected){
