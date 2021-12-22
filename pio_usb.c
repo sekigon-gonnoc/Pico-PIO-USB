@@ -901,9 +901,29 @@ static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
   dma_channel_set_write_addr(ch, &pio->txf[sm], false);
 }
 
-
 static repeating_timer_t sof_rt;
 static bool timer_active;
+
+static void start_timer(alarm_pool_t *alarm_pool) {
+  if (timer_active) {
+    return;
+  }
+
+  if (alarm_pool != NULL) {
+    alarm_pool_add_repeating_timer_us(alarm_pool, -1000, sof_timer, NULL,
+                                      &sof_rt);
+  } else {
+    add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
+  }
+
+  timer_active = true;
+}
+
+static void stop_timer() {
+  cancel_repeating_timer(&sof_rt);
+  timer_active = false;
+}
+
 usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
@@ -911,33 +931,27 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   configure_fullspeed_host(c);
 
-  if (c->alarm_pool != NULL) {
-    alarm_pool_add_repeating_timer_us(c->alarm_pool, -1000, sof_timer, NULL,
-                                      &sof_rt);
-  } else {
-    add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
-  }
+  start_timer(c->alarm_pool);
 
   current_config = *c;
-  timer_active = true;
 
   return &usb_device;
 }
 
-static volatile bool cancel_timer;
-static volatile bool start_timer;
+static volatile bool cancel_timer_flag;
+static volatile bool start_timer_flag;
 static uint32_t int_stat;
 
 void pio_usb_stop(void) {
-  cancel_timer = true;
-  while (cancel_timer) {
+  cancel_timer_flag = true;
+  while (cancel_timer_flag) {
     continue;
   }
 }
 
 void pio_usb_restart(void) {
-  start_timer = true;
-  while (start_timer) {
+  start_timer_flag = true;
+  while (start_timer_flag) {
     continue;
   }
 }
@@ -960,27 +974,17 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
     usb_device.enumerated = false;
   }
 
-  if (cancel_timer) {
+  if (cancel_timer_flag) {
     int_stat = save_and_disable_interrupts();
-
-    cancel_repeating_timer(&sof_rt);
+    stop_timer();
     memset(&usb_device, 0, sizeof(usb_device));
-
-    timer_active = false;
-    cancel_timer = false;
+    cancel_timer_flag = false;
   }
 
-  if (start_timer && !timer_active) {
-    if (current_config.alarm_pool != NULL) {
-      alarm_pool_add_repeating_timer_us(current_config.alarm_pool, -1000,
-                                        sof_timer, NULL, &sof_rt);
-    } else {
-      add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
-    }
-
+  if (start_timer_flag) {
+    start_timer(current_config.alarm_pool);
     restore_interrupts(int_stat);
-    timer_active = true;
-    start_timer = false;
+    start_timer_flag = false;
   }
 }
 
