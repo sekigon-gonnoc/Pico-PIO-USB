@@ -595,7 +595,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   return true;
 }
 
-static void on_device_connect() {
+static void on_device_connect(void) {
   bool fullspeed_flag = false;
 
   if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
@@ -923,7 +923,7 @@ static void start_timer(alarm_pool_t *alarm_pool) {
   timer_active = true;
 }
 
-static void stop_timer() {
+static void stop_timer(void) {
   cancel_repeating_timer(&sof_rt);
   timer_active = false;
 }
