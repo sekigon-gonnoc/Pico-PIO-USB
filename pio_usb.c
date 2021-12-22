@@ -508,7 +508,6 @@ static void __no_inline_not_in_flash_func(configure_lowspeed_host)(const pio_usb
 static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
   static uint8_t sof_count = 0;
-  static uint8_t reset_count =  0;
   UNUSED_PARAMETER(_rt);
 
   if (usb_device.connected && connection_check()) {
@@ -582,42 +581,10 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
 
   } else {
-    const uint pin_tx = 0;
-    if (reset_count == 0 &&
+    if (usb_device.event == EVENT_NONE &&
         ((gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) ||
          ((gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1)))) {
-      reset_count = 80;
-    }
-
-    if (reset_count > 3) {
-      pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_tx),
-                                (0b11u << pin_tx));
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_tx),
-                                   (0b11u << pin_tx));
-    } else if (reset_count > 2) {
-      pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_tx),
-                                   (0b11u << pin_tx));
-    } else if (reset_count > 0) {
-      if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
-        if (!usb_device.connected){
-          configure_fullspeed_host(&current_config);
-          usb_device.is_fullspeed = true;
-          usb_device.connected = true;
-          usb_device.event = EVENT_CONNECT;
-        }
-      }
-      else if (gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1) {
-        if (!usb_device.connected){
-          configure_lowspeed_host(&current_config);
-          usb_device.is_fullspeed = false;
-          usb_device.connected = true;
-          usb_device.event = EVENT_CONNECT;
-        }
-      }
-    }
-
-    if (reset_count) {
-      reset_count--;
+      usb_device.event = EVENT_CONNECT;
     }
   }
 
@@ -626,6 +593,43 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   sof_packet[3] = (calc_usb_crc5(sof_count) << 3) | (sof_count >> 8);
 
   return true;
+}
+
+static void on_device_connect() {
+  bool fullspeed_flag = false;
+
+  if (gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
+    fullspeed_flag = true;
+  } else if (gpio_get(pin_dp) == 0 && gpio_get(pin_dm) == 1) {
+    fullspeed_flag = false;
+  }
+
+  pio_sm_set_pins_with_mask(pio_usb_tx, sm_tx, (0b00 << pin_dp),
+                            (0b11u << pin_dp));
+  pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b11u << pin_dp),
+                               (0b11u << pin_dp));
+
+  busy_wait_ms(100);
+
+  pio_sm_set_pindirs_with_mask(pio_usb_tx, sm_tx, (0b00u << pin_dp),
+                               (0b11u << pin_dp));
+
+  busy_wait_us(100);
+
+  if (fullspeed_flag && gpio_get(pin_dp) == 1 && gpio_get(pin_dm) == 0) {
+    if (!usb_device.connected) {
+      configure_fullspeed_host(&current_config);
+      usb_device.is_fullspeed = true;
+      usb_device.connected = true;
+    }
+  } else if (!fullspeed_flag && gpio_get(pin_dp) == 0 &&
+             gpio_get(pin_dm) == 1) {
+    if (!usb_device.connected) {
+      configure_lowspeed_host(&current_config);
+      usb_device.is_fullspeed = false;
+      usb_device.connected = true;
+    }
+  }
 }
 
 static void update_packet_crc16(usb_setup_packet_t * packet) {
@@ -901,9 +905,29 @@ static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
   dma_channel_set_write_addr(ch, &pio->txf[sm], false);
 }
 
-
 static repeating_timer_t sof_rt;
 static bool timer_active;
+
+static void start_timer(alarm_pool_t *alarm_pool) {
+  if (timer_active) {
+    return;
+  }
+
+  if (alarm_pool != NULL) {
+    alarm_pool_add_repeating_timer_us(alarm_pool, -1000, sof_timer, NULL,
+                                      &sof_rt);
+  } else {
+    add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
+  }
+
+  timer_active = true;
+}
+
+static void stop_timer() {
+  cancel_repeating_timer(&sof_rt);
+  timer_active = false;
+}
+
 usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
@@ -911,39 +935,35 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   configure_fullspeed_host(c);
 
-  if (c->alarm_pool != NULL) {
-    alarm_pool_add_repeating_timer_us(c->alarm_pool, -1000, sof_timer, NULL,
-                                      &sof_rt);
-  } else {
-    add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
-  }
+  start_timer(c->alarm_pool);
 
   current_config = *c;
-  timer_active = true;
 
   return &usb_device;
 }
 
-static volatile bool cancel_timer;
-static volatile bool start_timer;
+
+static volatile bool cancel_timer_flag;
+static volatile bool start_timer_flag;
 static uint32_t int_stat;
 
 void pio_usb_stop(void) {
-  cancel_timer = true;
-  while (cancel_timer) {
+  cancel_timer_flag = true;
+  while (cancel_timer_flag) {
     continue;
   }
 }
 
 void pio_usb_restart(void) {
-  start_timer = true;
-  while (start_timer) {
+  start_timer_flag = true;
+  while (start_timer_flag) {
     continue;
   }
 }
 
 void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (usb_device.event == EVENT_CONNECT) {
+    on_device_connect();
     usb_device.event = EVENT_NONE;
     printf("Connected\n");
     int res = enumerate_device();
@@ -960,27 +980,17 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
     usb_device.enumerated = false;
   }
 
-  if (cancel_timer) {
+  if (cancel_timer_flag) {
     int_stat = save_and_disable_interrupts();
-
-    cancel_repeating_timer(&sof_rt);
+    stop_timer();
     memset(&usb_device, 0, sizeof(usb_device));
-
-    timer_active = false;
-    cancel_timer = false;
+    cancel_timer_flag = false;
   }
 
-  if (start_timer && !timer_active) {
-    if (current_config.alarm_pool != NULL) {
-      alarm_pool_add_repeating_timer_us(current_config.alarm_pool, -1000,
-                                        sof_timer, NULL, &sof_rt);
-    } else {
-      add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
-    }
-
+  if (start_timer_flag) {
+    start_timer(current_config.alarm_pool);
     restore_interrupts(int_stat);
-    timer_active = true;
-    start_timer = false;
+    start_timer_flag = false;
   }
 }
 
