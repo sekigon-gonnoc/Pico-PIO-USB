@@ -711,6 +711,21 @@ static int __no_inline_not_in_flash_func(control_in_protocol)(uint8_t *data,
   return res;
 }
 
+int __no_inline_not_in_flash_func(pio_usb_get_in_data)(endpoint_t *ep,
+                                                       uint8_t *buffer,
+                                                       uint8_t len) {
+  if ((ep->ep_num & EP_IN) && ep->new_data_flag) {
+    len = len < ep->packet_len ? len : ep->packet_len;
+    memcpy(buffer, (void *)ep->buffer, len);
+
+    ep->new_data_flag = false;
+
+    return len;
+  }
+
+  return -1;
+}
+
 int __no_inline_not_in_flash_func(pio_usb_set_out_data)(endpoint_t *ep,
                                                           const uint8_t *buffer,
                                                           uint8_t len) {
