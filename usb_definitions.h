@@ -5,6 +5,12 @@
 
 #include "pio_usb_configuration.h"
 
+typedef struct {
+  volatile bool connected;
+  volatile uint pin_dp;
+  volatile uint pin_dm;
+} root_port_t;
+
 typedef enum {
   CONTROL_NONE,
   CONTROL_IN,
