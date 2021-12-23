@@ -5,12 +5,6 @@
 
 #include "pio_usb_configuration.h"
 
-typedef struct {
-  volatile bool connected;
-  volatile uint pin_dp;
-  volatile uint pin_dm;
-} root_port_t;
-
 typedef enum {
   CONTROL_NONE,
   CONTROL_IN,
@@ -83,6 +77,12 @@ typedef struct {
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
 } usb_device_t;
+
+typedef struct {
+  volatile uint pin_dp;
+  volatile uint pin_dm;
+  usb_device_t root_device;
+} root_port_t;
 
 enum {
   USB_SYNC = 0x80,
