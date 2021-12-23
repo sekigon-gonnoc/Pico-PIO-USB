@@ -81,6 +81,7 @@ typedef struct {
 typedef struct {
   volatile uint pin_dp;
   volatile uint pin_dm;
+  volatile usb_device_event_t event;
   usb_device_t root_device;
 } root_port_t;
 
