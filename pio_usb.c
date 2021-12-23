@@ -681,14 +681,17 @@ static int __no_inline_not_in_flash_func(control_out_protocol)(
 }
 
 static int __no_inline_not_in_flash_func(control_in_protocol)(
-    usb_device_t *device, uint8_t *data, uint16_t length) {
+    usb_device_t *device, uint8_t *tx_data, uint16_t tx_length,
+    uint8_t *rx_buffer, uint16_t request_length) {
   int res = 0;
 
   control_pipe_t *pipe = &device->control_pipe;
 
   if (pipe->operation == CONTROL_NONE) {
-    pipe->setup_packet.tx_address = data;
-    pipe->setup_packet.tx_length = length;
+    pipe->setup_packet.tx_address = tx_data;
+    pipe->setup_packet.tx_length = tx_length;
+    pipe->rx_buffer = rx_buffer;
+    pipe->request_length = request_length;
     pipe->operation = CONTROL_IN;
   } else {
     return -1;
@@ -755,18 +758,19 @@ int __no_inline_not_in_flash_func(pio_usb_set_out_data)(endpoint_t *ep,
 
 static int enumerate_device(usb_device_t * device) {
   int res = 0;
-  device->control_pipe.request_length = 18;
+  uint8_t rx_buffer[512];
 
   usb_setup_packet_t get_device_descriptor_request =
       GET_DEVICE_DESCRIPTOR_REQ_DEFAULT;
   update_packet_crc16(&get_device_descriptor_request);
   res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
-                            sizeof(get_device_descriptor_request));
+                            sizeof(get_device_descriptor_request), rx_buffer, 18);
   if (res != 0) {
     return res;
   }
 
-  const device_descriptor_t * desc = (device_descriptor_t*)device->control_pipe.rx_buffer;
+  const device_descriptor_t *desc =
+      (device_descriptor_t *)device->control_pipe.rx_buffer;
   device->vid = desc->vid[0] | (desc->vid[1] << 8);
   device->pid = desc->pid[0] | (desc->pid[1] << 8);
 
@@ -785,10 +789,10 @@ static int enumerate_device(usb_device_t * device) {
       GET_CONFIGURATION_DESCRIPTOR_REQ_DEFAULT;
   get_configuration_descriptor_request.length_lsb = 9;
   get_configuration_descriptor_request.length_msb = 0;
-  device->control_pipe.request_length = 9;
   update_packet_crc16(&get_configuration_descriptor_request);
-  res = control_in_protocol(device, (uint8_t *)&get_configuration_descriptor_request,
-                            sizeof(get_configuration_descriptor_request));
+  res = control_in_protocol(
+      device, (uint8_t *)&get_configuration_descriptor_request,
+      sizeof(get_configuration_descriptor_request), rx_buffer, 9);
   if (res != 0) {
     return res;
   }
@@ -799,21 +803,20 @@ static int enumerate_device(usb_device_t * device) {
   get_configuration_descriptor_request.length_msb =
       ((configuration_descriptor_t *)(device->control_pipe.rx_buffer))
           ->total_length_msb;
-  device->control_pipe.request_length =
+  uint16_t request_length =
       get_configuration_descriptor_request.length_lsb |
       (get_configuration_descriptor_request.index_msb << 8);
   update_packet_crc16(&get_configuration_descriptor_request);
-  res = control_in_protocol(device, (uint8_t *)&get_configuration_descriptor_request,
-                            sizeof(get_configuration_descriptor_request));
+  res = control_in_protocol(
+      device, (uint8_t *)&get_configuration_descriptor_request,
+      sizeof(get_configuration_descriptor_request), rx_buffer, request_length);
 
   if (res != 0) {
     return res;
   }
   uint8_t configuration_descrptor_data[512];
   int16_t configuration_descrptor_length =
-      device->control_pipe.request_length > 512
-          ? 512
-          : device->control_pipe.request_length;
+      request_length > 512 ? 512 : request_length;
   memcpy(configuration_descrptor_data,
          (const void *)device->control_pipe.rx_buffer,
          configuration_descrptor_length);
@@ -850,8 +853,9 @@ static int enumerate_device(usb_device_t * device) {
       case DESC_TYPE_ENDPOINT: {
         const endpoint_descriptor_t *d =
             (const endpoint_descriptor_t *)descriptor;
-        printf("\t\t\tepaddr:0x%02x, attr:%d, size:%d, interval:%d\n", d->epaddr,
-               d->attr, d->max_size[0] | (d->max_size[1] << 8), d->interval);
+        printf("\t\t\tepaddr:0x%02x, attr:%d, size:%d, interval:%d\n",
+               d->epaddr, d->attr, d->max_size[0] | (d->max_size[1] << 8),
+               d->interval);
 
         if (class == CLASS_HID && d->attr == EP_ATTR_INTERRUPT) {
           volatile endpoint_t *ep = &device->endpoint[ep_idx];
@@ -885,11 +889,10 @@ static int enumerate_device(usb_device_t * device) {
         get_hid_report_descrpitor_request.length_lsb = d->desc_len[0];
         get_hid_report_descrpitor_request.length_msb = d->desc_len[1];
         uint16_t desc_len = d->desc_len[0] | (d->desc_len[1] << 8);
-        device->control_pipe.request_length = desc_len;
         update_packet_crc16(&get_hid_report_descrpitor_request);
-        control_in_protocol(device,
-                            (uint8_t *)&get_hid_report_descrpitor_request,
-                            sizeof(get_hid_report_descrpitor_request));
+        control_in_protocol(
+            device, (uint8_t *)&get_hid_report_descrpitor_request,
+            sizeof(get_hid_report_descrpitor_request), rx_buffer, desc_len);
         printf("\t\tReport descriptor:");
         for (int i = 0; i < desc_len; i++) {
           printf("%02x ", device->control_pipe.rx_buffer[i]);

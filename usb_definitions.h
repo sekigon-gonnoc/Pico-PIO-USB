@@ -42,7 +42,7 @@ typedef struct {
 typedef struct {
   volatile uint8_t data_in_num;
   volatile uint16_t buffer_idx;
-  volatile uint8_t rx_buffer[512];
+  volatile uint8_t *rx_buffer;
   volatile packet_info_t setup_packet;
   volatile packet_info_t out_data_packet;
   volatile int16_t request_length;
