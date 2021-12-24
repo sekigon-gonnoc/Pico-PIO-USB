@@ -36,3 +36,4 @@ typedef struct {
   }
 
 #define PIO_USB_EP_CNT 16
+#define PIO_USB_DEVICE_CNT 2

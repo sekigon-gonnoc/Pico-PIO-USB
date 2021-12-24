@@ -69,7 +69,7 @@ typedef enum {
   EVENT_HUB_PORT_CHANGE,
 } usb_device_event_t;
 
-typedef struct {
+typedef struct struct_usb_device_t {
   volatile bool connected;
   volatile bool enumerated;
   volatile usb_device_event_t event;
@@ -86,7 +86,7 @@ typedef struct {
   volatile uint pin_dp;
   volatile uint pin_dm;
   volatile usb_device_event_t event;
-  usb_device_t root_device;
+  usb_device_t *root_device;
 } root_port_t;
 
 enum {

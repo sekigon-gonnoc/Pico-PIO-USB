@@ -44,6 +44,7 @@ typedef struct {
   uint8_t usb_rx_buffer[128];
 } pio_port_t;
 
+static usb_device_t usb_device[PIO_USB_DEVICE_CNT];
 static pio_port_t pio_port[1];
 static root_port_t root_port[1];
 
@@ -411,11 +412,7 @@ static bool __no_inline_not_in_flash_func(connection_check)(root_port_t * port) 
 
     if (gpio_get(port->pin_dp) == 0 && gpio_get(port->pin_dm) == 0) {
       // device disconnect
-      if (port->root_device.connected) {
-        port->root_device.connected = false;
-        port->root_device.event = EVENT_DISCONNECT;
-        port->event = EVENT_DISCONNECT;
-      }
+      port->event = EVENT_DISCONNECT;
       return false;
     }
   }
@@ -510,69 +507,74 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   static uint8_t sof_count = 0;
   UNUSED_PARAMETER(_rt);
 
-  usb_device_t *device = &root_port[0].root_device;
-  uint8_t addr = root_port[0].root_device.address;
-  control_pipe_t *pipe = &root_port[0].root_device.control_pipe;
+  usb_device_t *root_device = root_port[0].root_device;
   pio_port_t *pp = &pio_port[0];
 
-  if (device->connected && connection_check(&root_port[0])) {
-
+  if (root_device != NULL && root_device->connected && connection_check(&root_port[0])) {
     usb_transfer(pp, sof_packet, sizeof(sof_packet));
 
-    switch (pipe->operation) {
-      case CONTROL_NONE:
-        break;
-      case CONTROL_IN:
-        usb_control_in_transfer(pp, addr, pipe);
-        if (pipe->stage == STAGE_COMPLETE) {
-          pipe->stage = STAGE_SETUP;
-          pipe->operation = CONTROL_COMPLETE;
-        } else if (pipe->stage == STAGE_ERROR) {
-          pipe->stage = STAGE_SETUP;
-          pipe->operation = CONTROL_ERROR;
-        }
-        break;
-      case CONTROL_OUT:
-        usb_control_out_transfer(pp, addr, pipe);
-        if (pipe->stage == STAGE_COMPLETE) {
-          pipe->stage = STAGE_SETUP;
-          pipe->operation = CONTROL_COMPLETE;
-        } else if (pipe->stage == STAGE_ERROR) {
-          pipe->stage = STAGE_SETUP;
-          pipe->operation = CONTROL_ERROR;
-        }
-        break;
-      default:
-        break;
+    for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
+      usb_device_t *device = &usb_device[idx];
+      uint8_t addr = device->address;
+      control_pipe_t *pipe = &device->control_pipe;
+      switch (pipe->operation) {
+        case CONTROL_NONE:
+          break;
+        case CONTROL_IN:
+          usb_control_in_transfer(pp, addr, pipe);
+          if (pipe->stage == STAGE_COMPLETE) {
+            pipe->stage = STAGE_SETUP;
+            pipe->operation = CONTROL_COMPLETE;
+          } else if (pipe->stage == STAGE_ERROR) {
+            pipe->stage = STAGE_SETUP;
+            pipe->operation = CONTROL_ERROR;
+          }
+          break;
+        case CONTROL_OUT:
+          usb_control_out_transfer(pp, addr, pipe);
+          if (pipe->stage == STAGE_COMPLETE) {
+            pipe->stage = STAGE_SETUP;
+            pipe->operation = CONTROL_COMPLETE;
+          } else if (pipe->stage == STAGE_ERROR) {
+            pipe->stage = STAGE_SETUP;
+            pipe->operation = CONTROL_ERROR;
+          }
+          break;
+        default:
+          break;
+      }
     }
 
-    for (int ep_idx = 0; ep_idx < PIO_USB_EP_CNT; ep_idx++) {
-      endpoint_t * ep = &device->endpoint[ep_idx];
-      if (!ep->ep_num || !ep->is_interrupt) {
-        continue;
-      }
-
-      if (ep->interval_counter > 0) {
-        ep->interval_counter--;
-        continue;
-      }
-
-      if (ep->ep_num & EP_IN) {
-        int res = usb_in_transaction(pp, device->address, ep);
-        ep->interval_counter = ep->interval - 1;
-        if (res == 0 && device->device_class == CLASS_HUB) {
-          device->event = EVENT_HUB_PORT_CHANGE;
-        } else if (res <= -2) {
-          // fatal
-          device->connected = false;
-          return true;
+    for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
+      usb_device_t *device = &usb_device[idx];
+      for (int ep_idx = 0; ep_idx < PIO_USB_EP_CNT; ep_idx++) {
+        endpoint_t *ep = &device->endpoint[ep_idx];
+        if (!ep->ep_num || !ep->is_interrupt) {
+          continue;
         }
-      } else {
-        if (ep->new_data_flag) {
-          int res = usb_out_transaction(pp, device->address, ep);
+
+        if (ep->interval_counter > 0) {
+          ep->interval_counter--;
+          continue;
+        }
+
+        if (ep->ep_num & EP_IN) {
+          int res = usb_in_transaction(pp, device->address, ep);
           ep->interval_counter = ep->interval - 1;
-          if (res == 0) {
+          if (res == 0 && device->device_class == CLASS_HUB) {
+            device->event = EVENT_HUB_PORT_CHANGE;
+          } else if (res <= -2) {
+            // fatal
+            device->connected = false;
+            return true;
+          }
+        } else {
+          if (ep->new_data_flag) {
+            int res = usb_out_transaction(pp, device->address, ep);
             ep->interval_counter = ep->interval - 1;
+            if (res == 0) {
+              ep->interval_counter = ep->interval - 1;
+            }
           }
         }
       }
@@ -583,7 +585,6 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
         ((gpio_get(root_port[0].pin_dp) == 1 && gpio_get(root_port[0].pin_dm) == 0) ||
          ((gpio_get(root_port[0].pin_dp) == 0 && gpio_get(root_port[0].pin_dm) == 1)))) {
       root_port->event = EVENT_CONNECT;
-      root_port->root_device.event = EVENT_CONNECT;
     }
   }
 
@@ -616,17 +617,21 @@ static void on_device_connect(pio_port_t *pp, root_port_t *port) {
   busy_wait_us(100);
 
   if (fullspeed_flag && gpio_get(port->pin_dp) == 1 && gpio_get(port->pin_dm) == 0) {
-    if (!port->root_device.connected) {
+    port->root_device = &usb_device[0];
+    if (!port->root_device->connected) {
       configure_fullspeed_host(pp, &current_config, port);
-      port->root_device.is_fullspeed = true;
-      port->root_device.connected = true;
+      port->root_device->is_fullspeed = true;
+      port->root_device->connected = true;
+      port->root_device->event = EVENT_CONNECT;
     }
   } else if (!fullspeed_flag && gpio_get(port->pin_dp) == 0 &&
              gpio_get(port->pin_dm) == 1) {
-    if (!port->root_device.connected) {
+    port->root_device = &usb_device[0];
+    if (!port->root_device->connected) {
       configure_lowspeed_host(pp, &current_config, port);
-      port->root_device.is_fullspeed = false;
-      port->root_device.connected = true;
+      port->root_device->is_fullspeed = false;
+      port->root_device->connected = true;
+      port->root_device->event = EVENT_CONNECT;
     }
   }
 }
@@ -801,9 +806,7 @@ static int initialize_hub(usb_device_t *device) {
     }
   }
 
-  for (int idx = 0; idx < port_num; idx++) {
-    res = clear_hub_feature(device, idx, HUB_CLR_PORT_CONNECTION);
-  }
+  busy_wait_ms(500);
 
   return res;
 }
@@ -1015,7 +1018,7 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   current_config = *c;
 
-  return &root_port[0].root_device;
+  return &usb_device[0];
 }
 
 
@@ -1038,55 +1041,73 @@ void pio_usb_restart(void) {
 }
 
 void __no_inline_not_in_flash_func(pio_usb_task)(void) {
-  usb_device_t * device = &root_port[0].root_device;
-
   if (root_port[0].event == EVENT_CONNECT) {
+    printf("Root connected\n");
     root_port[0].event = EVENT_NONE;
     on_device_connect(&pio_port[0], &root_port[0]);
   } else if (root_port[0].event == EVENT_DISCONNECT) {
+    printf("Root disconnected\n");
     root_port[0].event = EVENT_NONE;
+    root_port[0].root_device->connected = false;
+    root_port[0].root_device->event = EVENT_DISCONNECT;
   }
 
-  if (device->event == EVENT_CONNECT) {
-    device->event = EVENT_NONE;
-    printf("Connected\n");
-    int res = enumerate_device(device, 1);
-    if (res == 0) {
-      device->enumerated = true;
-      if (device->device_class == CLASS_HUB) {
-        initialize_hub(device);
-      }
-    } else {
-      device->connected = false;
-      device->event = EVENT_DISCONNECT;
-    }
-  } else if (device->event == EVENT_DISCONNECT) {
-    device->event = EVENT_NONE;
-    printf("Disconnect\n");
-    memset(device, 0, sizeof(*device));
-    device->enumerated = false;
-  } else if (device->event == EVENT_HUB_PORT_CHANGE) {
-    device->event = EVENT_NONE;
-    uint8_t bm = device->endpoint[0].buffer[0];
-    for (int bit = 1; bit < 8; bit++) {
-      if (!(bm & (1 << bit))) {
-        continue;
-      }
-      uint8_t port = bit - 1;
-      hub_port_status_t status;
-      int res = get_hub_port_status(device, port, &status);
-      if (res != 0) {
-        continue;
-      }
-      printf("port status:%d %d\n", status.port_change, status.port_status);
+  // if (device != NULL) {
+  for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
+    usb_device_t *device = &usb_device[idx];
 
-      if (status.port_change & 0x0001) {
-        if (status.port_status & 0x0001) {
-          printf("new device on port %d\n", port);
-        } else {
-          printf("device removed from port %d\n", port);
+    if (device->event == EVENT_CONNECT) {
+      device->event = EVENT_NONE;
+      printf("Device %d Connected\n", idx);
+      int res = enumerate_device(device, idx + 1);
+      if (res == 0) {
+        device->enumerated = true;
+        if (device->device_class == CLASS_HUB) {
+          initialize_hub(device);
         }
-        clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
+      } else {
+        printf("Enumeration failed(%d)\n", res);
+        device->connected = false;
+        device->event = EVENT_DISCONNECT;
+      }
+    } else if (device->event == EVENT_DISCONNECT) {
+      device->event = EVENT_NONE;
+      printf("Disconnect\n");
+      memset(device, 0, sizeof(*device));
+      device->enumerated = false;
+    } else if (device->event == EVENT_HUB_PORT_CHANGE) {
+      uint8_t bm = device->endpoint[0].buffer[0];
+      for (int bit = 1; bit < 8; bit++) {
+        if (!(bm & (1 << bit))) {
+          continue;
+        }
+        uint8_t port = bit - 1;
+        hub_port_status_t status;
+        int res = get_hub_port_status(device, port, &status);
+        if (res != 0) {
+          continue;
+        }
+        printf("port status:%d %d\n", status.port_change, status.port_status);
+
+        if (status.port_change & 0x0001) {
+          if (status.port_status & 0x0001) {
+            printf("new device on port %d, reset port\n", port);
+            set_hub_feature(device, port, HUB_PORT_RESET);
+          } else {
+            printf("device removed from port %d\n", port);
+          }
+          clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
+          device->event = EVENT_NONE;
+        } else if (status.port_change & (1 << 4)) {
+          printf("reset port %d complete\n", port);
+          clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
+          device[1].connected = true;
+          device[1].address = 0;
+          device[1].event = EVENT_CONNECT;
+          device->event = EVENT_NONE;
+        } else {
+          device->event = EVENT_NONE;
+        }
       }
     }
   }
@@ -1094,7 +1115,7 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (cancel_timer_flag) {
     int_stat = save_and_disable_interrupts();
     stop_timer();
-    memset(device, 0, sizeof(*device));
+    memset(usb_device, 0, sizeof(usb_device));
     cancel_timer_flag = false;
   }
 
