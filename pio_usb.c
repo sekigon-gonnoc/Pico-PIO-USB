@@ -979,6 +979,28 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   return res;
 }
 
+static void device_disconnect(usb_device_t *device) {
+  for (int port = 0; port < PIO_USB_HUB_PORT_CNT; port++) {
+    if (device->child_devices[port] != 0) {
+      device_disconnect(&usb_device[device->child_devices[port]]);
+    }
+  }
+  memset(device, 0, sizeof(*device));
+}
+
+static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port) {
+  for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
+    if (usb_device[idx].connected == false) {
+      hub_device->child_devices[port] = idx;
+      usb_device[idx].connected = true;
+      usb_device[idx].event = EVENT_CONNECT;
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
 static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
   dma_channel_config conf = dma_channel_get_default_config(ch);
 
@@ -1080,8 +1102,7 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
     } else if (device->event == EVENT_DISCONNECT) {
       device->event = EVENT_NONE;
       printf("Disconnect\n");
-      memset(device, 0, sizeof(*device));
-      device->enumerated = false;
+      device_disconnect(device);
     } else if (device->event == EVENT_HUB_PORT_CHANGE) {
       uint8_t bm = device->endpoint[0].buffer[0];
       for (int bit = 1; bit < 8; bit++) {
@@ -1102,15 +1123,14 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
             set_hub_feature(device, port, HUB_PORT_RESET);
           } else {
             printf("device removed from port %d\n", port);
+            device_disconnect(&usb_device[device->child_devices[port]]);
           }
           clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
           device->event = EVENT_NONE;
         } else if (status.port_change & (1 << 4)) {
           printf("reset port %d complete\n", port);
           clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
-          device[1].connected = true;
-          device[1].address = 0;
-          device[1].event = EVENT_CONNECT;
+          assign_new_device_to_port(device, port);
           device->event = EVENT_NONE;
         } else {
           device->event = EVENT_NONE;
@@ -1122,7 +1142,9 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (cancel_timer_flag) {
     int_stat = save_and_disable_interrupts();
     stop_timer();
-    memset(usb_device, 0, sizeof(usb_device));
+    if (root_port->root_device != NULL){
+      device_disconnect(root_port->root_device);
+    }
     cancel_timer_flag = false;
   }
 

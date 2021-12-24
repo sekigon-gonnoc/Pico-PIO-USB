@@ -80,6 +80,7 @@ typedef struct struct_usb_device_t {
   volatile bool is_fullspeed;
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
+  uint8_t child_devices[PIO_USB_HUB_PORT_CNT];
 } usb_device_t;
 
 typedef struct {
