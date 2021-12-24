@@ -94,9 +94,9 @@ static void __no_inline_not_in_flash_func(send_ack)(const pio_port_t *pp) {
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
 
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
-  pio0->irq |= IRQ_TX_COMP_MASK;  // clear complete flag
+  pp->pio_usb_tx->irq |= IRQ_TX_COMP_MASK;  // clear complete flag
 
-  while ((pio0->irq & IRQ_TX_COMP_MASK) == 0) {
+  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
     continue;
   }
 
@@ -559,9 +559,9 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
 
       if (ep->ep_num & EP_IN) {
         int res = usb_in_transaction(pp, device->address, ep);
-          ep->interval_counter = ep->interval - 1;
-        if (res == 0) {
-          // ep->interval_counter = ep->interval;
+        ep->interval_counter = ep->interval - 1;
+        if (res == 0 && device->device_class == CLASS_HUB) {
+          device->event = EVENT_HUB_PORT_CHANGE;
         } else if (res <= -2) {
           // fatal
           device->connected = false;
@@ -570,7 +570,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
       } else {
         if (ep->new_data_flag) {
           int res = usb_out_transaction(pp, device->address, ep);
-            ep->interval_counter = ep->interval - 1;
+          ep->interval_counter = ep->interval - 1;
           if (res == 0) {
             ep->interval_counter = ep->interval - 1;
           }
@@ -579,11 +579,11 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
 
   } else {
-    if (device->event == EVENT_NONE &&
+    if (root_port->event == EVENT_NONE &&
         ((gpio_get(root_port[0].pin_dp) == 1 && gpio_get(root_port[0].pin_dm) == 0) ||
          ((gpio_get(root_port[0].pin_dp) == 0 && gpio_get(root_port[0].pin_dm) == 1)))) {
       root_port->event = EVENT_CONNECT;
-      device->event = EVENT_CONNECT;
+      root_port->root_device.event = EVENT_CONNECT;
     }
   }
 
@@ -782,7 +782,33 @@ static int get_hub_port_status(usb_device_t *device, uint8_t port,
                              sizeof(*status));
 }
 
-static int enumerate_device(usb_device_t * device) {
+static int initialize_hub(usb_device_t *device) {
+  uint8_t rx_buffer[16];
+  int res = 0;
+  printf("USB Hub detected\n");
+  usb_setup_packet_t get_hub_desc_request = GET_HUB_DESCRPTOR_REQUEST;
+  update_packet_crc16(&get_hub_desc_request);
+  control_in_protocol(device, (uint8_t *)&get_hub_desc_request,
+                      sizeof(get_hub_desc_request), rx_buffer, 8);
+  const hub_descriptor_t *desc = (hub_descriptor_t *)rx_buffer;
+  uint8_t port_num = desc->port_num;
+
+  printf("\tTurn on port powers\n");
+  for (int idx = 0; idx < port_num; idx++) {
+    res = set_hub_feature(device, idx, HUB_PORT_POWER);
+    if (res != 0) {
+      printf("\tFail\n");
+    }
+  }
+
+  for (int idx = 0; idx < port_num; idx++) {
+    res = clear_hub_feature(device, idx, HUB_CLR_PORT_CONNECTION);
+  }
+
+  return res;
+}
+
+static int enumerate_device(usb_device_t *device, uint8_t address) {
   int res = 0;
   uint8_t rx_buffer[512];
 
@@ -801,10 +827,11 @@ static int enumerate_device(usb_device_t * device) {
   device->pid = desc->pid[0] | (desc->pid[1] << 8);
   device->device_class = desc->class;
 
-  printf("Enumerating %04x:%04x, class:%d\n", device->vid, device->pid, device->device_class);
+  printf("Enumerating %04x:%04x, class:%d, address:%d\n", device->vid,
+         device->pid, device->device_class, address);
 
   usb_setup_packet_t set_address_request = SET_ADDRESS_REQ_DEFAULT;
-  set_address_request.value_lsb = 1;
+  set_address_request.value_lsb = address;
   set_address_request.value_msb = 0;
   update_packet_crc16(&set_address_request);
   res = control_out_protocol(device, (uint8_t *)&set_address_request,
@@ -812,7 +839,7 @@ static int enumerate_device(usb_device_t * device) {
   if (res != 0) {
     return res;
   }
-  device->address = 1;
+  device->address = address;
 
   usb_setup_packet_t get_configuration_descriptor_request =
       GET_CONFIGURATION_DESCRIPTOR_REQ_DEFAULT;
@@ -939,24 +966,6 @@ static int enumerate_device(usb_device_t * device) {
     descriptor += descriptor[0];
   }
 
-  if (device->device_class == CLASS_HUB) {
-    printf("USB Hub detected\n");
-    usb_setup_packet_t get_hub_desc_request = GET_HUB_DESCRPTOR_REQUEST;
-    update_packet_crc16(&get_hub_desc_request);
-    control_in_protocol(device, (uint8_t *)&get_hub_desc_request,
-                        sizeof(get_hub_desc_request), rx_buffer, 8);
-    const hub_descriptor_t *desc = (hub_descriptor_t *)rx_buffer;
-    uint8_t port_num = desc->port_num;
-
-    printf("\tTurn on port powers\n");
-    for (int idx = 0; idx < port_num; idx++) {
-      res = set_hub_feature(device, idx, HUB_PORT_POWER);
-      if (res != 0) {
-        printf("\tFail\n");
-      }
-    }
-  }
-
   return res;
 }
 
@@ -1034,14 +1043,19 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (root_port[0].event == EVENT_CONNECT) {
     root_port[0].event = EVENT_NONE;
     on_device_connect(&pio_port[0], &root_port[0]);
+  } else if (root_port[0].event == EVENT_DISCONNECT) {
+    root_port[0].event = EVENT_NONE;
   }
 
   if (device->event == EVENT_CONNECT) {
     device->event = EVENT_NONE;
     printf("Connected\n");
-    int res = enumerate_device(device);
+    int res = enumerate_device(device, 1);
     if (res == 0) {
       device->enumerated = true;
+      if (device->device_class == CLASS_HUB) {
+        initialize_hub(device);
+      }
     } else {
       device->connected = false;
       device->event = EVENT_DISCONNECT;
@@ -1051,6 +1065,30 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
     printf("Disconnect\n");
     memset(device, 0, sizeof(*device));
     device->enumerated = false;
+  } else if (device->event == EVENT_HUB_PORT_CHANGE) {
+    device->event = EVENT_NONE;
+    uint8_t bm = device->endpoint[0].buffer[0];
+    for (int bit = 1; bit < 8; bit++) {
+      if (!(bm & (1 << bit))) {
+        continue;
+      }
+      uint8_t port = bit - 1;
+      hub_port_status_t status;
+      int res = get_hub_port_status(device, port, &status);
+      if (res != 0) {
+        continue;
+      }
+      printf("port status:%d %d\n", status.port_change, status.port_status);
+
+      if (status.port_change & 0x0001) {
+        if (status.port_status & 0x0001) {
+          printf("new device on port %d\n", port);
+        } else {
+          printf("device removed from port %d\n", port);
+        }
+        clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
+      }
+    }
   }
 
   if (cancel_timer_flag) {

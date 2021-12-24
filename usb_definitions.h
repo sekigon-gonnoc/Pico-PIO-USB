@@ -66,6 +66,7 @@ typedef enum {
   EVENT_NONE,
   EVENT_CONNECT,
   EVENT_DISCONNECT,
+  EVENT_HUB_PORT_CHANGE,
 } usb_device_event_t;
 
 typedef struct {
@@ -215,8 +216,11 @@ typedef struct {
 } hub_port_status_t;
 
 enum {
+  HUB_PORT_RESET = 4,
   HUB_PORT_POWER = 8,
   HUB_CLR_PORT_CONNECTION = 16,
+  HUB_CLR_PORT_SUSPEND = 18,
+  HUB_CLR_PORT_RESET = 20,
 };
 
 enum {
