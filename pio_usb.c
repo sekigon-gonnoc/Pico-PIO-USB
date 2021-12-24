@@ -60,9 +60,6 @@ static void __not_in_flash_func(usb_transfer)(const pio_port_t *pp,
   while ((pio0->irq & IRQ_TX_COMP_MASK) == 0) {
     continue;
   }
-
-  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  dma_channel_abort(pp->tx_ch);
 }
 
 void __no_inline_not_in_flash_func(send_setup_packet)(const pio_port_t *pp,
@@ -91,7 +88,6 @@ void __no_inline_not_in_flash_func(send_out_token)(const pio_port_t *pp,
 
 static void __no_inline_not_in_flash_func(send_ack)(const pio_port_t *pp) {
   uint8_t data[] = {USB_SYNC, USB_PID_ACK};
-  // usb_transfer(data, sizeof(data));
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
 
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
@@ -100,9 +96,6 @@ static void __no_inline_not_in_flash_func(send_ack)(const pio_port_t *pp) {
   while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
     continue;
   }
-
-  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  dma_channel_abort(pp->tx_ch);
 }
 
 void __no_inline_not_in_flash_func(send_nak)(const pio_port_t *pp) {

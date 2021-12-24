@@ -21,7 +21,7 @@ check_eop1:
     nop [1]
 send_eop:
     nop side SE0 [3]
-    nop [3]
+    irq IRQ_COMP [3]            ; To catch quik ACK, mark as complete here
     nop side J
     set pindirs, 0b00
     irq wait IRQ_COMP
