@@ -25,7 +25,9 @@
 
 #define UNUSED_PARAMETER(x) (void)x
 
+#define IRQ_TX_EOP_MASK (1 << usb_tx_fs_IRQ_EOP)
 #define IRQ_TX_COMP_MASK (1 << usb_tx_fs_IRQ_COMP)
+#define IRQ_TX_ALL_MASK (IRQ_TX_EOP_MASK | IRQ_TX_COMP_MASK)
 #define IRQ_RX_COMP_MASK (1 << IRQ_RX_EOP)
 #define IRQ_RX_ALL_MASK ((1 << IRQ_RX_EOP) | (1 << IRQ_RX_BS_ERR))
 
@@ -55,9 +57,9 @@ static void __not_in_flash_func(usb_transfer)(const pio_port_t *pp,
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
 
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
-  pio0->irq |= IRQ_TX_COMP_MASK;  // clear complete flag
+  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK;  // clear complete flag
 
-  while ((pio0->irq & IRQ_TX_COMP_MASK) == 0) {
+  while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
     continue;
   }
 }
@@ -91,9 +93,9 @@ static void __no_inline_not_in_flash_func(send_ack)(const pio_port_t *pp) {
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
 
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
-  pp->pio_usb_tx->irq |= IRQ_TX_COMP_MASK;  // clear complete flag
+  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK;  // clear complete flag
 
-  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+  while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
     continue;
   }
 }
@@ -129,6 +131,10 @@ void __no_inline_not_in_flash_func(control_setup_transfer)(
   prepare_receive(pp);
 
   send_setup_packet(pp, device_address, 0);
+  // ensure previous tx complete
+  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+    continue;
+  }
   usb_transfer(pp, tx_data_address, tx_data_len);
 
   start_receive(pp);
@@ -140,6 +146,10 @@ void __no_inline_not_in_flash_func(control_out_transfer)(
   prepare_receive(pp);
 
   send_out_token(pp, device_address, 0);
+  // ensure previous tx complete
+  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+    continue;
+  }
   usb_transfer(pp, tx_data_address, tx_data_len);
 
   start_receive(pp);
@@ -155,7 +165,7 @@ void  __no_inline_not_in_flash_func(calc_in_token)(uint8_t * packet, uint8_t add
 }
 
 static void __no_inline_not_in_flash_func(wait_handshake)(pio_port_t* pp) {
-  int16_t t = 120;
+  int16_t t = 240;
   int16_t idx = 0;
 
   while (t--) {
@@ -182,6 +192,10 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t* pp, ui
 
   prepare_receive(pp);
   send_out_token(pp, addr, ep->ep_num & 0xf);
+  // ensure previous tx complete
+  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+    continue;
+  }
   usb_transfer(pp, (uint8_t*)ep->buffer, ep->packet_len);
   start_receive(pp);
 
@@ -208,7 +222,7 @@ static int __no_inline_not_in_flash_func(receive_packet_and_ack)(pio_port_t* pp)
   uint16_t crc_prev2 = 0xffff;
   uint16_t crc_receive = 0xffff;
   bool  crc_match = false;
-  int16_t t = 120;
+  int16_t t = 240;
   uint16_t idx = 0;
 
   while (t--) {
@@ -306,7 +320,7 @@ static int __no_inline_not_in_flash_func(usb_control_out_transfer)(
     calc_in_token(packet, addr, 0);
     data_transfer(pp, packet, sizeof(packet));
 
-    volatile int16_t t = 120;
+    volatile int16_t t = 240;
     volatile int16_t idx = 0;
     while (t--) {
       if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
@@ -442,15 +456,15 @@ static void __no_inline_not_in_flash_func(configure_fullspeed_host)(pio_port_t* 
   pp->rx_reset_instr = pio_encode_jmp(pp->offset_rx);
 
   if (pp->offset_eop){
-    pio_remove_program(pp->pio_usb_rx, &eop_detect_program, pp->offset_eop);
+    pio_remove_program(pp->pio_usb_rx, &eop_detect_fs_program, pp->offset_eop);
   }
 
   if (c->debug_pin_eop < 0) {
-    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_program);
+    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_fs_program);
   } else {
-    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_debug_program);
+    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_fs_debug_program);
   }
-  eop_detect_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop, port->pin_dp, true,
+  eop_detect_fs_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop, port->pin_dp, true,
                           c->debug_pin_eop);
 }
 
@@ -483,16 +497,16 @@ static void __no_inline_not_in_flash_func(configure_lowspeed_host)(pio_port_t* p
   pp->rx_reset_instr = pio_encode_jmp(pp->offset_rx);
 
   if (pp->offset_eop){
-    pio_remove_program(pp->pio_usb_rx, &eop_detect_program, pp->offset_eop);
+    pio_remove_program(pp->pio_usb_rx, &eop_detect_ls_program, pp->offset_eop);
   }
 
   if (c->debug_pin_eop < 0) {
-    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_program);
+    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_ls_program);
   } else {
-    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_debug_program);
+    pp->offset_eop = pio_add_program(pp->pio_usb_rx, &eop_detect_ls_debug_program);
   }
-  eop_detect_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop, port->pin_dp, false,
-                          c->debug_pin_eop);
+  eop_detect_ls_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop,
+                          port->pin_dp, c->debug_pin_eop);
 }
 
 static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {

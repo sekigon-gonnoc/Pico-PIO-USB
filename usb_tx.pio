@@ -10,6 +10,7 @@
 .define SE0 0b00
 .define BR 5         ; bit repeat limit
 .define public IRQ_COMP 0   ; complete flag bit
+.define public IRQ_EOP 1   ; EOP start flag bit
 
 start:
     set y, BR side J
@@ -20,10 +21,10 @@ check_eop1:
     jmp !osre load_bit1
     nop [1]
 send_eop:
-    nop side SE0 [3]
-    irq IRQ_COMP [3]            ; To catch quik ACK, mark as complete here
+    irq IRQ_EOP side SE0 [3]    ; To catch quik ACK, mark as complete here
+    nop [3]
     nop side J
-    set pindirs, 0b00
+    set pindirs, 0b00 [3]
     irq wait IRQ_COMP
     jmp start
 load_bit1:
@@ -56,6 +57,7 @@ low2:
 .define SE0 0b00
 .define BR 5         ; bit repeat limit
 .define public IRQ_COMP 0   ; complete flag bit
+.define public IRQ_EOP 1   ; EOP start flag bit
 
 start:
     set y, BR side J
@@ -66,10 +68,10 @@ check_eop1:
     jmp !osre load_bit1
     nop [1]
 send_eop:
-    nop side SE0 [3]
+    irq IRQ_EOP side SE0 [3]
     nop [3]
     nop side J
-    set pindirs, 0b00
+    set pindirs, 0b00 [3]
     irq wait IRQ_COMP
     jmp start
 load_bit1:
