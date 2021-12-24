@@ -756,6 +756,32 @@ int __no_inline_not_in_flash_func(pio_usb_set_out_data)(endpoint_t *ep,
   return 0;
 }
 
+static int set_hub_feature(usb_device_t *device, uint8_t port, uint8_t value) {
+  usb_setup_packet_t req = SET_HUB_FEATURE_REQUEST;
+  req.index_lsb = port + 1;
+  req.value_lsb = value;
+  update_packet_crc16(&req);
+  return control_out_protocol(device, (uint8_t *)&req, sizeof(req), NULL, 0);
+}
+
+static int clear_hub_feature(usb_device_t *device, uint8_t port,
+                             uint8_t value) {
+  usb_setup_packet_t req = CLEAR_HUB_FEATURE_REQUEST;
+  req.index_lsb = port + 1;
+  req.value_lsb = value;
+  update_packet_crc16(&req);
+  return control_out_protocol(device, (uint8_t *)&req, sizeof(req), NULL, 0);
+}
+
+static int get_hub_port_status(usb_device_t *device, uint8_t port,
+                               hub_port_status_t *status) {
+  usb_setup_packet_t req = GET_HUB_PORT_STATUS_REQUEST;
+  req.index_lsb = port + 1;
+  update_packet_crc16(&req);
+  return control_in_protocol(device, (uint8_t *)&req, sizeof(req), (uint8_t*)status,
+                             sizeof(*status));
+}
+
 static int enumerate_device(usb_device_t * device) {
   int res = 0;
   uint8_t rx_buffer[512];
@@ -773,6 +799,9 @@ static int enumerate_device(usb_device_t * device) {
       (device_descriptor_t *)device->control_pipe.rx_buffer;
   device->vid = desc->vid[0] | (desc->vid[1] << 8);
   device->pid = desc->pid[0] | (desc->pid[1] << 8);
+  device->device_class = desc->class;
+
+  printf("Enumerating %04x:%04x, class:%d\n", device->vid, device->pid, device->device_class);
 
   usb_setup_packet_t set_address_request = SET_ADDRESS_REQ_DEFAULT;
   set_address_request.value_lsb = 1;
@@ -857,7 +886,8 @@ static int enumerate_device(usb_device_t * device) {
                d->epaddr, d->attr, d->max_size[0] | (d->max_size[1] << 8),
                d->interval);
 
-        if (class == CLASS_HID && d->attr == EP_ATTR_INTERRUPT) {
+        if ((class == CLASS_HID || class == CLASS_HUB) &&
+            d->attr == EP_ATTR_INTERRUPT) {
           volatile endpoint_t *ep = &device->endpoint[ep_idx];
           ep->interval = d->interval;
           ep->interval_counter = 0;
@@ -907,6 +937,24 @@ static int enumerate_device(usb_device_t * device) {
 
     configuration_descrptor_length -= descriptor[0];
     descriptor += descriptor[0];
+  }
+
+  if (device->device_class == CLASS_HUB) {
+    printf("USB Hub detected\n");
+    usb_setup_packet_t get_hub_desc_request = GET_HUB_DESCRPTOR_REQUEST;
+    update_packet_crc16(&get_hub_desc_request);
+    control_in_protocol(device, (uint8_t *)&get_hub_desc_request,
+                        sizeof(get_hub_desc_request), rx_buffer, 8);
+    const hub_descriptor_t *desc = (hub_descriptor_t *)rx_buffer;
+    uint8_t port_num = desc->port_num;
+
+    printf("\tTurn on port powers\n");
+    for (int idx = 0; idx < port_num; idx++) {
+      res = set_hub_feature(device, idx, HUB_PORT_POWER);
+      if (res != 0) {
+        printf("\tFail\n");
+      }
+    }
   }
 
   return res;
