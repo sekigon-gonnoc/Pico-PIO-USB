@@ -62,6 +62,7 @@ typedef struct {
 static usb_device_t usb_device[PIO_USB_DEVICE_CNT];
 static pio_port_t pio_port[1];
 static root_port_t root_port[1];
+static endpoint_t ep_pool[PIO_USB_EP_POOL_CNT];
 
 static pio_usb_configuration_t current_config;
 
@@ -658,8 +659,12 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
         pp->need_pre = true;
       }
 
-      for (int ep_idx = 0; ep_idx < PIO_USB_EP_CNT; ep_idx++) {
-        endpoint_t *ep = &device->endpoint[ep_idx];
+      for (int ep_idx = 0; ep_idx < PIO_USB_DEV_EP_CNT; ep_idx++) {
+        endpoint_t *ep = pio_usb_get_endpoint(device, ep_idx);
+        if (ep == NULL) {
+          break;
+        }
+
         if (!ep->ep_num || !ep->is_interrupt) {
           continue;
         }
@@ -1015,7 +1020,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   if (res != 0) {
     return res;
   }
-  volatile uint8_t ep_idx = 0;
+  volatile uint8_t ep_id_idx = 0;
   volatile uint8_t interface = 0;
   volatile uint8_t class = 0;
   uint8_t *descriptor = configuration_descrptor_data;
@@ -1041,17 +1046,30 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
 
         if ((class == CLASS_HID || class == CLASS_HUB) &&
             d->attr == EP_ATTR_INTERRUPT) {
-          volatile endpoint_t *ep = &device->endpoint[ep_idx];
-          for (int bit_idx = 0; bit_idx < 6; bit_idx++) {
-            if ((1 << bit_idx) <= d->interval) {
-              ep->interval = (1 << bit_idx);
+          volatile endpoint_t *ep = NULL;
+          for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT;
+               ep_pool_idx++) {
+            if (ep_pool[ep_pool_idx].ep_num == 0) {
+              ep = &ep_pool[ep_pool_idx];
+              device->endpoint_id[ep_id_idx] = ep_pool_idx + 1;
+              ep_id_idx++;
+              break;
             }
           }
-          ep->interval_counter = 0;
-          ep->size = d->max_size[0] | (d->max_size[1] << 8);
-          ep->is_interrupt = true;
-          ep->ep_num = d->epaddr;
-          ep_idx++;
+
+          if (ep != NULL) {
+            for (int bit_idx = 0; bit_idx < 6; bit_idx++) {
+              if ((1 << bit_idx) <= d->interval) {
+                ep->interval = (1 << bit_idx);
+              }
+            }
+            ep->interval_counter = 0;
+            ep->size = d->max_size[0] | (d->max_size[1] << 8);
+            ep->is_interrupt = true;
+            ep->ep_num = d->epaddr;
+          } else {
+            printf("No empty EP\n");
+          }
         }
       } break;
       case DESC_TYPE_HID: {
@@ -1105,6 +1123,15 @@ static void device_disconnect(usb_device_t *device) {
       device_disconnect(&usb_device[device->child_devices[port]]);
     }
   }
+
+  for (int ep_idx = 0; ep_idx < PIO_USB_DEV_EP_CNT; ep_idx++) {
+    endpoint_t *ep = pio_usb_get_endpoint(device, ep_idx);
+    if (ep == NULL) {
+      break;
+    }
+    memset(ep, 0, sizeof(*ep));
+  }
+
   memset(device, 0, sizeof(*device));
 }
 
@@ -1157,6 +1184,16 @@ static void start_timer(alarm_pool_t *alarm_pool) {
 static void stop_timer(void) {
   cancel_repeating_timer(&sof_rt);
   timer_active = false;
+}
+
+endpoint_t *pio_usb_get_endpoint(usb_device_t *device, uint8_t idx) {
+  uint8_t ep_id = device->endpoint_id[idx];
+  if (ep_id == 0) {
+    return NULL;
+  } else if (ep_id >= 1) {
+    return &ep_pool[ep_id - 1];
+  }
+  return NULL;
 }
 
 usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
@@ -1245,7 +1282,8 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
       printf("Disconnect\n");
       device_disconnect(device);
     } else if (device->event == EVENT_HUB_PORT_CHANGE) {
-      uint8_t bm = device->endpoint[0].buffer[0];
+      volatile endpoint_t * ep = pio_usb_get_endpoint(device, 0);
+      uint8_t bm = ep->buffer[0];
       for (int bit = 1; bit < 8; bit++) {
         if (!(bm & (1 << bit))) {
           continue;

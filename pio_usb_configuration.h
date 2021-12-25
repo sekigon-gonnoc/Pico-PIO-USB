@@ -35,6 +35,7 @@ typedef struct {
         PIO_USB_DEBUG_PIN_NONE                                                 \
   }
 
-#define PIO_USB_EP_CNT 16
+#define PIO_USB_EP_POOL_CNT 32
+#define PIO_USB_DEV_EP_CNT 16
 #define PIO_USB_DEVICE_CNT 4
 #define PIO_USB_HUB_PORT_CNT 8
