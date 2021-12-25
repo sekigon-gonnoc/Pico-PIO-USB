@@ -221,11 +221,29 @@ typedef struct {
 } hub_port_status_t;
 
 enum {
-  HUB_PORT_RESET = 4,
-  HUB_PORT_POWER = 8,
+  HUB_SET_PORT_RESET = 4,
+  HUB_SET_PORT_POWER = 8,
   HUB_CLR_PORT_CONNECTION = 16,
   HUB_CLR_PORT_SUSPEND = 18,
   HUB_CLR_PORT_RESET = 20,
+};
+
+enum {
+  HUB_STAT_PORT_CONNECTION = (1 << 0),
+  HUB_STAT_PORT_ENABLE = (1 << 1),
+  HUB_STAT_PORT_SUSPEND = (1 << 2),
+  HUB_STAT_PORT_OC = (1 << 3),
+  HUB_STAT_PORT_RESET = (1 << 4),
+  HUB_STAT_PORT_POWER = (1 << 8),
+  HUB_STAT_PORT_LOWSPEED = (1 << 9),
+};
+
+enum {
+  HUB_CHANGE_PORT_CONNECTION = (1 << 0),
+  HUB_CHANGE_PORT_ENABLE = (1 << 1),
+  HUB_CHANGE_PORT_SUSPEND = (1 << 2),
+  HUB_CHANGE_PORT_OC = (1 << 3),
+  HUB_CHANGE_PORT_RESET = (1 << 4),
 };
 
 enum {

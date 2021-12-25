@@ -65,21 +65,19 @@ static root_port_t root_port[1];
 
 static pio_usb_configuration_t current_config;
 
+#define SM_SET_CLKDIV(pio, sm, div) pio_sm_set_clkdiv_int_frac(pio, sm, div.div_int, div.div_frac)
+
 static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   uint8_t data[] = {USB_SYNC, USB_PID_PRE};
 
   // send PRE token in full-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  for (uint i = 0; i < 4; ++i) {
-    uint16_t instr = usb_tx_fs_pre_program.instructions[i + 4];
-    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + 4] = instr;
+  for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
+    uint16_t instr = usb_tx_fs_pre_program.instructions[i + USB_TX_EOP_OFFSET];
+    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
   }
-  pio_remove_program(pp->pio_usb_tx, &usb_tx_fs_program, pp->offset_tx);
-  pio_add_program(pp->pio_usb_tx, &usb_tx_fs_pre_program);
 
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_tx, pp->sm_tx,
-                             pp->clk_div_fs_tx.div_int,
-                             pp->clk_div_fs_tx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
 
@@ -93,41 +91,31 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
 
   // change bus speed to low-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  // pio_remove_program(pp->pio_usb_tx, &usb_tx_fs_pre_program, pp->offset_tx);
-  // pio_add_program(pp->pio_usb_tx, &usb_tx_fs_program);
-  for (uint i = 0; i < 4; ++i) {
-    uint16_t instr = usb_tx_fs_program.instructions[i + 4];
-    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + 4] = instr;
+  for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
+    uint16_t instr = usb_tx_fs_program.instructions[i + USB_TX_EOP_OFFSET];
+    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
   }
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_tx, pp->sm_tx,
-                             pp->clk_div_ls_tx.div_int,
-                             pp->clk_div_ls_tx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
+
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_rx, pp->sm_rx,
-                             pp->clk_div_ls_rx.div_int,
-                             pp->clk_div_ls_rx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_ls_rx);
+
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_rx, pp->sm_eop,
-                             pp->clk_div_ls_rx.div_int,
-                             pp->clk_div_ls_rx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, true);
 }
 
 static void __no_inline_not_in_flash_func(restore_fs_bus)(const pio_port_t *pp) {
   // change bus speed to full-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_tx, pp->sm_tx,
-                             pp->clk_div_fs_tx.div_int,
-                             pp->clk_div_fs_tx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
+
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_rx, pp->sm_rx,
-                             pp->clk_div_fs_rx.div_int,
-                             pp->clk_div_fs_rx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_fs_rx);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
+
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
-  pio_sm_set_clkdiv_int_frac(pp->pio_usb_rx, pp->sm_eop,
-                             pp->clk_div_fs_rx.div_int,
-                             pp->clk_div_fs_rx.div_frac);
+  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_fs_rx);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, true);
 }
 
@@ -691,6 +679,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
             break;
           }
         } else {
+          // EP_OUT
           if (ep->new_data_flag) {
             int res = usb_out_transaction(pp, device->address, ep);
             ep->interval_counter = ep->interval - 1;
@@ -934,7 +923,7 @@ static int initialize_hub(usb_device_t *device) {
 
   printf("\tTurn on port powers\n");
   for (int idx = 0; idx < port_num; idx++) {
-    res = set_hub_feature(device, idx, HUB_PORT_POWER);
+    res = set_hub_feature(device, idx, HUB_SET_PORT_POWER);
     if (res != 0) {
       printf("\tFail\n");
     }
@@ -1247,7 +1236,7 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
         // retry
         if (device->parent_device != NULL) {
           set_hub_feature(device->parent_device, device->parent_port,
-                          HUB_PORT_RESET);
+                          HUB_SET_PORT_RESET);
         }
         device_disconnect(device);
       }
@@ -1269,21 +1258,21 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
         }
         printf("port status:%d %d\n", status.port_change, status.port_status);
 
-        if (status.port_change & 0x0001) {
-          if (status.port_status & 0x0001) {
+        if (status.port_change & HUB_CHANGE_PORT_CONNECTION) {
+          if (status.port_status & HUB_STAT_PORT_CONNECTION) {
             printf("new device on port %d, reset port\n", port);
-            set_hub_feature(device, port, HUB_PORT_RESET);
+            set_hub_feature(device, port, HUB_SET_PORT_RESET);
           } else {
             printf("device removed from port %d\n", port);
             device_disconnect(&usb_device[device->child_devices[port]]);
           }
           clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
           device->event = EVENT_NONE;
-        } else if (status.port_change & (1 << 4)) {
+        } else if (status.port_change & HUB_CHANGE_PORT_RESET) {
           printf("reset port %d complete\n", port);
           clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
-          assign_new_device_to_port(device, port,
-                                    status.port_status & (1 << 9));
+          assign_new_device_to_port(
+              device, port, status.port_status & HUB_STAT_PORT_LOWSPEED);
           device->event = EVENT_NONE;
         } else {
           device->event = EVENT_NONE;

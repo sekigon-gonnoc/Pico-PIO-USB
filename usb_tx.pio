@@ -1,7 +1,10 @@
 ; Copyright (c) 2021 sekigon-gonnoc
+
+.define public USB_TX_EOP_OFFSET 4
+.define public USB_TX_EOP_DISABLER_LEN 4
+
 ; USB FS NRZI transmitter
 ; Run 48 MHz, autopull
-
 .program usb_tx_fs
 .side_set 2 opt
 
