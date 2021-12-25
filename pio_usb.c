@@ -1309,7 +1309,9 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
             set_hub_feature(device, port, HUB_SET_PORT_RESET);
           } else {
             printf("device removed from port %d\n", port);
-            device_disconnect(&usb_device[device->child_devices[port]]);
+            if (device->child_devices[port] != 0) {
+              device_disconnect(&usb_device[device->child_devices[port]]);
+            }
           }
         } else if (status.port_change & HUB_CHANGE_PORT_RESET) {
           printf("reset port %d complete\n", port);
