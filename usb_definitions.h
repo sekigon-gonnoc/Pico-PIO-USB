@@ -82,6 +82,8 @@ typedef struct struct_usb_device_t {
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
   uint8_t child_devices[PIO_USB_HUB_PORT_CNT];
+  struct struct_usb_device_t *parent_device;
+  uint8_t parent_port;
 } usb_device_t;
 
 typedef struct {

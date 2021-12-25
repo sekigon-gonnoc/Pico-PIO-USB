@@ -689,7 +689,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
           } else if (res <= -2) {
             // fatal
             device->connected = false;
-            return true;
+            break;
           }
         } else {
           if (ep->new_data_flag) {
@@ -1120,6 +1120,8 @@ static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port, boo
   for (int idx = 1; idx < PIO_USB_DEVICE_CNT; idx++) {
     if (usb_device[idx].connected == false && hub_device != &usb_device[idx]) {
       hub_device->child_devices[port] = idx;
+      usb_device[idx].parent_device = hub_device;
+      usb_device[idx].parent_port = port;
       usb_device[idx].connected = true;
       usb_device[idx].is_fullspeed = !is_ls;
       usb_device[idx].event = EVENT_CONNECT;
@@ -1239,8 +1241,12 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
         }
       } else {
         printf("Enumeration failed(%d)\n", res);
-        device->connected = false;
-        device->event = EVENT_DISCONNECT;
+        // retry
+        if (device->parent_device != NULL) {
+          set_hub_feature(device->parent_device, device->parent_port,
+                          HUB_PORT_RESET);
+        }
+        device_disconnect(device);
       }
     } else if (device->event == EVENT_DISCONNECT) {
       device->event = EVENT_NONE;
