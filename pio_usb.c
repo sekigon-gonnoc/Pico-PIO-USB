@@ -799,7 +799,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
 
   for (int root_idx = 0; root_idx < PIO_USB_ROOT_PORT_CNT; root_idx++) {
     root_port_t *active_root = &root_port[root_idx];
-    if (!active_root->initialized || (active_root->root_device != NULL &&
+    if ((!active_root->initialized) || (active_root->root_device != NULL &&
                                       active_root->root_device->connected)) {
       continue;
     }
@@ -808,6 +808,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
         (get_port_pin_status(active_root) == PORT_PIN_FS_IDLE ||
          (get_port_pin_status(active_root) == PORT_PIN_LS_IDLE))) {
       active_root->event = EVENT_CONNECT;
+      printf("event connect %d\n", root_idx);
     }
   }
 
@@ -818,47 +819,47 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   return true;
 }
 
-static void on_device_connect(pio_port_t *pp, root_port_t *port,
+static void on_device_connect(pio_port_t *pp, root_port_t *root,
                               int device_idx) {
   bool fullspeed_flag = false;
 
-  if (get_port_pin_status(port) == PORT_PIN_FS_IDLE) {
+  if (get_port_pin_status(root) == PORT_PIN_FS_IDLE) {
     fullspeed_flag = true;
-  } else if (get_port_pin_status(port) == PORT_PIN_LS_IDLE) {
+  } else if (get_port_pin_status(root) == PORT_PIN_LS_IDLE) {
     fullspeed_flag = false;
   }
 
-  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00 << port->pin_dp),
-                            (0b11u << port->pin_dp));
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b11u << port->pin_dp),
-                               (0b11u << port->pin_dp));
+  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00 << root->pin_dp),
+                            (0b11u << root->pin_dp));
+  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b11u << root->pin_dp),
+                               (0b11u << root->pin_dp));
 
   busy_wait_ms(100);
 
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00u << port->pin_dp),
-                               (0b11u << port->pin_dp));
+  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00u << root->pin_dp),
+                               (0b11u << root->pin_dp));
 
   busy_wait_us(100);
 
-  if (fullspeed_flag && get_port_pin_status(port) == PORT_PIN_FS_IDLE) {
-    port->root_device = &usb_device[device_idx];
-    if (!port->root_device->connected) {
-      configure_fullspeed_host(pp, &current_config, port);
-      port->root_device->is_fullspeed = true;
-      port->root_device->is_root = true;
-      port->root_device->connected = true;
-      port->root_device->root = root_port;
-      port->root_device->event = EVENT_CONNECT;
+  if (fullspeed_flag && get_port_pin_status(root) == PORT_PIN_FS_IDLE) {
+    root->root_device = &usb_device[device_idx];
+    if (!root->root_device->connected) {
+      configure_fullspeed_host(pp, &current_config, root);
+      root->root_device->is_fullspeed = true;
+      root->root_device->is_root = true;
+      root->root_device->connected = true;
+      root->root_device->root = root;
+      root->root_device->event = EVENT_CONNECT;
     }
-  } else if (!fullspeed_flag && get_port_pin_status(port) == PORT_PIN_LS_IDLE) {
-    port->root_device = &usb_device[device_idx];
-    if (!port->root_device->connected) {
-      configure_lowspeed_host(pp, &current_config, port);
-      port->root_device->is_fullspeed = false;
-      port->root_device->is_root = true;
-      port->root_device->connected = true;
-      port->root_device->root = root_port;
-      port->root_device->event = EVENT_CONNECT;
+  } else if (!fullspeed_flag && get_port_pin_status(root) == PORT_PIN_LS_IDLE) {
+    root->root_device = &usb_device[device_idx];
+    if (!root->root_device->connected) {
+      configure_lowspeed_host(pp, &current_config, root);
+      root->root_device->is_fullspeed = false;
+      root->root_device->is_root = true;
+      root->root_device->connected = true;
+      root->root_device->root = root;
+      root->root_device->event = EVENT_CONNECT;
     }
   }
 }
@@ -1351,6 +1352,25 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
   return &usb_device[0];
 }
 
+int pio_usb_add_port(uint8_t pin_dp) {
+  for (int idx = 0; idx < PIO_USB_ROOT_PORT_CNT; idx++) {
+    if (!root_port[idx].initialized) {
+      root_port[idx].pin_dp = pin_dp;
+      root_port[idx].pin_dm = pin_dp + 1;
+      gpio_pull_down(pin_dp);
+      gpio_pull_down(pin_dp + 1);
+      pio_gpio_init(pio_port[0].pio_usb_tx, pin_dp);
+      pio_gpio_init(pio_port[0].pio_usb_tx, pin_dp + 1);
+      pio_sm_set_pindirs_with_mask(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
+                                   (0b11 << pin_dp));
+      root_port[idx].initialized = true;
+
+      return 0;
+    }
+  }
+
+  return -1;
+}
 
 static volatile bool cancel_timer_flag;
 static volatile bool start_timer_flag;
@@ -1371,18 +1391,20 @@ void pio_usb_restart(void) {
 }
 
 void __no_inline_not_in_flash_func(pio_usb_task)(void) {
-  if (root_port[0].event == EVENT_CONNECT) {
-    printf("Root connected\n");
-    root_port[0].event = EVENT_NONE;
-    int dev_idx = device_pool_vacant();
-    if (dev_idx >= 0) {
-      on_device_connect(&pio_port[0], &root_port[0], dev_idx);
+  for (int root_idx = 0; root_idx < PIO_USB_ROOT_PORT_CNT; root_idx++) {
+    if (root_port[root_idx].event == EVENT_CONNECT) {
+      printf("Root %d connected\n", root_idx);
+      root_port[root_idx].event = EVENT_NONE;
+      int dev_idx = device_pool_vacant();
+      if (dev_idx >= 0) {
+        on_device_connect(&pio_port[0], &root_port[root_idx], dev_idx);
+      }
+    } else if (root_port[root_idx].event == EVENT_DISCONNECT) {
+      printf("Root %d disconnected\n", root_idx);
+      root_port[root_idx].event = EVENT_NONE;
+      root_port[root_idx].root_device->connected = false;
+      root_port[root_idx].root_device->event = EVENT_DISCONNECT;
     }
-  } else if (root_port[0].event == EVENT_DISCONNECT) {
-    printf("Root disconnected\n");
-    root_port[0].event = EVENT_NONE;
-    root_port[0].root_device->connected = false;
-    root_port[0].root_device->event = EVENT_DISCONNECT;
   }
 
   for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {

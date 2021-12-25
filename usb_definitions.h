@@ -71,7 +71,7 @@ typedef enum {
 
 typedef struct struct_usb_device_t usb_device_t;
 typedef struct struct_root_port_t {
-  bool initialized;
+  volatile bool initialized;
   volatile uint pin_dp;
   volatile uint pin_dm;
   volatile usb_device_event_t event;
