@@ -61,7 +61,7 @@ typedef struct {
 
 static usb_device_t usb_device[PIO_USB_DEVICE_CNT];
 static pio_port_t pio_port[1];
-static root_port_t root_port[2];
+static root_port_t root_port[PIO_USB_ROOT_PORT_CNT];
 static endpoint_t ep_pool[PIO_USB_EP_POOL_CNT];
 
 static pio_usb_configuration_t current_config;
@@ -515,7 +515,8 @@ static void __no_inline_not_in_flash_func(override_pio_program)(PIO pio, const p
     }
 }
 
-static void __no_inline_not_in_flash_func(configure_fullspeed_host)(pio_port_t* pp, const pio_usb_configuration_t * c, root_port_t * port) {
+static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
+    pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port) {
   if (pp->offset_tx) {
     override_pio_program(pp->pio_usb_tx, &usb_tx_fs_program, pp->offset_tx);
     SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
@@ -624,20 +625,21 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   static uint8_t sof_count = 0;
   UNUSED_PARAMETER(_rt);
 
-  usb_device_t *root_device = root_port[0].root_device;
+  root_port_t *active_root = &root_port[0];
+  usb_device_t *root_device = active_root->root_device;
   pio_port_t *pp = &pio_port[0];
 
-  if (root_device != NULL && root_device->connected && connection_check(&root_port[0])) {
+  if (root_device != NULL && root_device->connected && connection_check(active_root)) {
     bool is_fs = root_device->is_fullspeed || (!root_device->is_root);
     if (is_fs) {
-      configure_fullspeed_host(pp, &current_config, &root_port[0]);
-      usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, root_port[0].pin_dp);
+      configure_fullspeed_host(pp, &current_config, active_root);
+      usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, active_root->pin_dp);
     } else {
-      configure_lowspeed_host(pp, &current_config, &root_port[0]);
-      usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, root_port[0].pin_dm);
+      configure_lowspeed_host(pp, &current_config, active_root);
+      usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, active_root->pin_dm);
     }
-    usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, root_port[0].pin_dp);
-    usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, root_port[0].pin_dp);
+    usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, active_root->pin_dp);
+    usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, active_root->pin_dp);
     usb_transfer(pp, sof_packet, sizeof(sof_packet));
 
 
@@ -646,7 +648,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
       uint8_t addr = device->address;
       control_pipe_t *pipe = &device->control_pipe;
 
-      if (!device->connected) {
+      if (!device->connected || (device->root != active_root)) {
         continue;
       }
 
@@ -741,14 +743,14 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
   } else {
     if (root_port->event == EVENT_NONE &&
-        ((gpio_get(root_port[0].pin_dp) == 1 &&
-          gpio_get(root_port[0].pin_dm) == 0) ||
-         ((gpio_get(root_port[0].pin_dp) == 0 &&
-           gpio_get(root_port[0].pin_dm) == 1)))) {
-      if (root_port[0].root_device != NULL &&
-          root_port[0].root_device->connected) {
+        ((gpio_get(active_root->pin_dp) == 1 &&
+          gpio_get(active_root->pin_dm) == 0) ||
+         ((gpio_get(active_root->pin_dp) == 0 &&
+           gpio_get(active_root->pin_dm) == 1)))) {
+      if (active_root->root_device != NULL &&
+          active_root->root_device->connected) {
       } else {
-        root_port->event = EVENT_CONNECT;
+        active_root->event = EVENT_CONNECT;
       }
     }
   }
@@ -788,6 +790,7 @@ static void on_device_connect(pio_port_t *pp, root_port_t *port, int device_idx)
       port->root_device->is_fullspeed = true;
       port->root_device->is_root = true;
       port->root_device->connected = true;
+      port->root_device->root = root_port;
       port->root_device->event = EVENT_CONNECT;
     }
   } else if (!fullspeed_flag && gpio_get(port->pin_dp) == 0 &&
@@ -798,6 +801,7 @@ static void on_device_connect(pio_port_t *pp, root_port_t *port, int device_idx)
       port->root_device->is_fullspeed = false;
       port->root_device->is_root = true;
       port->root_device->connected = true;
+      port->root_device->root = root_port;
       port->root_device->event = EVENT_CONNECT;
     }
   }
@@ -1191,6 +1195,7 @@ static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port, boo
     hub_device->child_devices[port] = idx;
     usb_device[idx].parent_device = hub_device;
     usb_device[idx].parent_port = port;
+    usb_device[idx].root = hub_device->root;
     usb_device[idx].connected = true;
     usb_device[idx].is_fullspeed = !is_ls;
     usb_device[idx].event = EVENT_CONNECT;
@@ -1267,6 +1272,7 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   apply_config(pp, c, &root_port[0]);
   configure_fullspeed_host(pp, c, &root_port[0]);
+  root_port[0].initialized = true;
 
   pio_calculate_clkdiv_from_float((float)clock_get_hz(clk_sys) / 48000000,
                                   &pp->clk_div_fs_tx.div_int,
