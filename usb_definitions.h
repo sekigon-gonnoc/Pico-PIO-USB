@@ -78,9 +78,12 @@ typedef struct struct_usb_device_t {
   volatile uint16_t pid;
   volatile uint8_t device_class;
   volatile bool is_fullspeed;
+  volatile bool is_root;
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
   uint8_t child_devices[PIO_USB_HUB_PORT_CNT];
+  struct struct_usb_device_t *parent_device;
+  uint8_t parent_port;
 } usb_device_t;
 
 typedef struct {
@@ -101,6 +104,7 @@ enum {
   USB_PID_ACK = 0xd2,
   USB_PID_NAK = 0x5a,
   USB_PID_STALL = 0x1e,
+  USB_PID_PRE = 0x3c,
   USB_CRC16_PLACE = 0,
 };
 
@@ -217,11 +221,29 @@ typedef struct {
 } hub_port_status_t;
 
 enum {
-  HUB_PORT_RESET = 4,
-  HUB_PORT_POWER = 8,
+  HUB_SET_PORT_RESET = 4,
+  HUB_SET_PORT_POWER = 8,
   HUB_CLR_PORT_CONNECTION = 16,
   HUB_CLR_PORT_SUSPEND = 18,
   HUB_CLR_PORT_RESET = 20,
+};
+
+enum {
+  HUB_STAT_PORT_CONNECTION = (1 << 0),
+  HUB_STAT_PORT_ENABLE = (1 << 1),
+  HUB_STAT_PORT_SUSPEND = (1 << 2),
+  HUB_STAT_PORT_OC = (1 << 3),
+  HUB_STAT_PORT_RESET = (1 << 4),
+  HUB_STAT_PORT_POWER = (1 << 8),
+  HUB_STAT_PORT_LOWSPEED = (1 << 9),
+};
+
+enum {
+  HUB_CHANGE_PORT_CONNECTION = (1 << 0),
+  HUB_CHANGE_PORT_ENABLE = (1 << 1),
+  HUB_CHANGE_PORT_SUSPEND = (1 << 2),
+  HUB_CHANGE_PORT_OC = (1 << 3),
+  HUB_CHANGE_PORT_RESET = (1 << 4),
 };
 
 enum {
