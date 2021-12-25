@@ -721,7 +721,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   return true;
 }
 
-static void on_device_connect(pio_port_t *pp, root_port_t *port) {
+static void on_device_connect(pio_port_t *pp, root_port_t *port, int device_idx) {
   bool fullspeed_flag = false;
 
   if (gpio_get(port->pin_dp) == 1 && gpio_get(port->pin_dm) == 0) {
@@ -743,7 +743,7 @@ static void on_device_connect(pio_port_t *pp, root_port_t *port) {
   busy_wait_us(100);
 
   if (fullspeed_flag && gpio_get(port->pin_dp) == 1 && gpio_get(port->pin_dm) == 0) {
-    port->root_device = &usb_device[0];
+    port->root_device = &usb_device[device_idx];
     if (!port->root_device->connected) {
       configure_fullspeed_host(pp, &current_config, port);
       port->root_device->is_fullspeed = true;
@@ -753,7 +753,7 @@ static void on_device_connect(pio_port_t *pp, root_port_t *port) {
     }
   } else if (!fullspeed_flag && gpio_get(port->pin_dp) == 0 &&
              gpio_get(port->pin_dm) == 1) {
-    port->root_device = &usb_device[0];
+    port->root_device = &usb_device[device_idx];
     if (!port->root_device->connected) {
       configure_lowspeed_host(pp, &current_config, port);
       port->root_device->is_fullspeed = false;
@@ -1136,18 +1136,27 @@ static void device_disconnect(usb_device_t *device) {
   memset(device, 0, sizeof(*device));
 }
 
-static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port, bool is_ls) {
-  for (int idx = 1; idx < PIO_USB_DEVICE_CNT; idx++) {
-    if (usb_device[idx].connected == false && hub_device != &usb_device[idx]) {
-      hub_device->child_devices[port] = idx;
-      usb_device[idx].parent_device = hub_device;
-      usb_device[idx].parent_port = port;
-      usb_device[idx].connected = true;
-      usb_device[idx].is_fullspeed = !is_ls;
-      usb_device[idx].event = EVENT_CONNECT;
-      printf("Assign device %d to %d-%d\n", idx, hub_device->address, port);
-      return 0;
+static int device_pool_vacant(void) {
+  for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
+    if (!usb_device[idx].connected) {
+      return idx;
     }
+  }
+
+  return -1;
+}
+
+static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port, bool is_ls) {
+  int idx = device_pool_vacant();
+  if (idx >= 0) {
+    hub_device->child_devices[port] = idx;
+    usb_device[idx].parent_device = hub_device;
+    usb_device[idx].parent_port = port;
+    usb_device[idx].connected = true;
+    usb_device[idx].is_fullspeed = !is_ls;
+    usb_device[idx].event = EVENT_CONNECT;
+    printf("Assign device %d to %d-%d\n", idx, hub_device->address, port);
+    return 0;
   }
 
   printf("Failed to assign device\n");
@@ -1251,7 +1260,10 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   if (root_port[0].event == EVENT_CONNECT) {
     printf("Root connected\n");
     root_port[0].event = EVENT_NONE;
-    on_device_connect(&pio_port[0], &root_port[0]);
+    int dev_idx = device_pool_vacant();
+    if (dev_idx >= 0) {
+      on_device_connect(&pio_port[0], &root_port[0], dev_idx);
+    }
   } else if (root_port[0].event == EVENT_DISCONNECT) {
     printf("Root disconnected\n");
     root_port[0].event = EVENT_NONE;
@@ -1306,7 +1318,11 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
           clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
           if (status.port_status & HUB_STAT_PORT_CONNECTION) {
             printf("new device on port %d, reset port\n", port);
-            set_hub_feature(device, port, HUB_SET_PORT_RESET);
+            if (device_pool_vacant() >= 0) {
+              set_hub_feature(device, port, HUB_SET_PORT_RESET);
+            } else {
+              printf("No vacant in device pool\n");
+            }
           } else {
             printf("device removed from port %d\n", port);
             if (device->child_devices[port] != 0) {
