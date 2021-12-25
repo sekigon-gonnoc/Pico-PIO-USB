@@ -78,6 +78,7 @@ typedef struct struct_usb_device_t {
   volatile uint16_t pid;
   volatile uint8_t device_class;
   volatile bool is_fullspeed;
+  volatile bool is_root;
   control_pipe_t control_pipe;
   endpoint_t endpoint[PIO_USB_EP_CNT];
   uint8_t child_devices[PIO_USB_HUB_PORT_CNT];
@@ -101,6 +102,7 @@ enum {
   USB_PID_ACK = 0xd2,
   USB_PID_NAK = 0x5a,
   USB_PID_STALL = 0x1e,
+  USB_PID_PRE = 0x3c,
   USB_CRC16_PLACE = 0,
 };
 
