@@ -1043,7 +1043,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
             d->attr == EP_ATTR_INTERRUPT) {
           volatile endpoint_t *ep = &device->endpoint[ep_idx];
           for (int bit_idx = 0; bit_idx < 6; bit_idx++) {
-            if ((1 << bit_idx) < d->interval) {
+            if ((1 << bit_idx) <= d->interval) {
               ep->interval = (1 << bit_idx);
             }
           }
