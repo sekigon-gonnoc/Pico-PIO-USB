@@ -930,7 +930,8 @@ static int initialize_hub(usb_device_t *device) {
   for (int idx = 0; idx < port_num; idx++) {
     res = set_hub_feature(device, idx, HUB_SET_PORT_POWER);
     if (res != 0) {
-      printf("\tFail\n");
+      printf("\tFailed to turn on ports\n");
+      break;
     }
   }
 
@@ -1144,9 +1145,12 @@ static int assign_new_device_to_port(usb_device_t *hub_device, uint8_t port, boo
       usb_device[idx].connected = true;
       usb_device[idx].is_fullspeed = !is_ls;
       usb_device[idx].event = EVENT_CONNECT;
+      printf("Assign device %d to %d-%d\n", idx, hub_device->address, port);
       return 0;
     }
   }
+
+  printf("Failed to assign device\n");
 
   return -1;
 }
@@ -1255,7 +1259,6 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
     root_port[0].root_device->event = EVENT_DISCONNECT;
   }
 
-  // if (device != NULL) {
   for (int idx = 0; idx < PIO_USB_DEVICE_CNT; idx++) {
     usb_device_t *device = &usb_device[idx];
 
@@ -1266,9 +1269,11 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
       if (res == 0) {
         device->enumerated = true;
         if (device->device_class == CLASS_HUB) {
-          initialize_hub(device);
+          res = initialize_hub(device);
         }
-      } else {
+      }
+
+      if (res != 0) {
         printf("Enumeration failed(%d)\n", res);
         // retry
         if (device->parent_device != NULL) {
@@ -1282,7 +1287,8 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
       printf("Disconnect\n");
       device_disconnect(device);
     } else if (device->event == EVENT_HUB_PORT_CHANGE) {
-      volatile endpoint_t * ep = pio_usb_get_endpoint(device, 0);
+      device->event = EVENT_NONE;
+      volatile endpoint_t *ep = pio_usb_get_endpoint(device, 0);
       uint8_t bm = ep->buffer[0];
       for (int bit = 1; bit < 8; bit++) {
         if (!(bm & (1 << bit))) {
@@ -1297,6 +1303,7 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
         printf("port status:%d %d\n", status.port_change, status.port_status);
 
         if (status.port_change & HUB_CHANGE_PORT_CONNECTION) {
+          clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
           if (status.port_status & HUB_STAT_PORT_CONNECTION) {
             printf("new device on port %d, reset port\n", port);
             set_hub_feature(device, port, HUB_SET_PORT_RESET);
@@ -1304,16 +1311,11 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
             printf("device removed from port %d\n", port);
             device_disconnect(&usb_device[device->child_devices[port]]);
           }
-          clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
-          device->event = EVENT_NONE;
         } else if (status.port_change & HUB_CHANGE_PORT_RESET) {
           printf("reset port %d complete\n", port);
           clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
           assign_new_device_to_port(
               device, port, status.port_status & HUB_STAT_PORT_LOWSPEED);
-          device->event = EVENT_NONE;
-        } else {
-          device->event = EVENT_NONE;
         }
       }
     }
