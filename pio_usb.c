@@ -1053,7 +1053,11 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
         if ((class == CLASS_HID || class == CLASS_HUB) &&
             d->attr == EP_ATTR_INTERRUPT) {
           volatile endpoint_t *ep = &device->endpoint[ep_idx];
-          ep->interval = (d->interval / 8) * 8;
+          for (int bit_idx = 0; bit_idx < 6; bit_idx++) {
+            if ((1 << bit_idx) < d->interval) {
+              ep->interval = (1 << bit_idx);
+            }
+          }
           ep->interval_counter = 0;
           ep->size = d->max_size[0] | (d->max_size[1] << 8);
           ep->is_interrupt = true;
