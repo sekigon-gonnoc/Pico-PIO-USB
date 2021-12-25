@@ -277,6 +277,12 @@ wait_se0:
 % c-sdk {
 #include "hardware/clocks.h"
 
+  static void __no_inline_not_in_flash_func(usb_rx_configure_pins)(PIO pio, uint sm, uint pin_dp) {
+    pio_sm_set_in_pins(pio, sm, pin_dp);
+    pio->sm[sm].execctrl = (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
+                (pin_dp << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
+  }
+
 static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
     pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
     gpio_pull_down(pin_dp);
