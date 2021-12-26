@@ -18,6 +18,10 @@ void core1_main() {
   config.alarm_pool = (void*)alarm_pool_create(2, 1);
   usb_device = pio_usb_init(&config);
 
+  //// Call pio_usb_add_port to use multi port
+  // const uint8_t pin_dp2 = 8;
+  // pio_usb_add_port(pin_dp2);
+
   while (true) {
     pio_usb_task();
   }
@@ -66,6 +70,7 @@ int main() {
         }
       }
     }
+    stdio_flush();
     sleep_us(10);
   }
 }
