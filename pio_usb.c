@@ -785,7 +785,6 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
         (get_port_pin_status(active_root) == PORT_PIN_FS_IDLE ||
          (get_port_pin_status(active_root) == PORT_PIN_LS_IDLE))) {
       active_root->event = EVENT_CONNECT;
-      printf("event connect %d\n", root_idx);
     }
   }
 
