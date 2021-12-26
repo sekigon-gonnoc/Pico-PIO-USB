@@ -23,7 +23,7 @@
 
 .wrap_target
 start:
-    wait 1 pin 0
+    wait 1 pin 0 [7]
     wait 0 pin 0
 
 read2to1:
@@ -71,8 +71,8 @@ bs_err:
 
 .wrap_target
 start:
-    wait 1 pin 0    side db0
-    wait 0 pin 0 	side db0
+    wait 1 pin 0 [7]    side db0
+    wait 0 pin 0 	    side db0
 
 read2to1:
     set y, BR   side db1
@@ -117,7 +117,7 @@ bs_err:
 
 .wrap_target
 start:
-    wait 1 pin 0
+    wait 1 pin 0 [7]
     wait 0 pin 0
 
 read2to1:
@@ -164,8 +164,8 @@ bs_err:
 
 .wrap_target
 start:
-    wait 1 pin 0    side db0
-    wait 0 pin 0 	side db0
+    wait 1 pin 0 [7]   side db0
+    wait 0 pin 0 	   side db0
 
 read2to1:
     set y, BR   side db1

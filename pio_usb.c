@@ -776,8 +776,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
 
   for (int root_idx = 0; root_idx < PIO_USB_ROOT_PORT_CNT; root_idx++) {
     root_port_t *active_root = &root_port[root_idx];
-    if ((!active_root->initialized) || (active_root->root_device != NULL &&
-                                      active_root->root_device->connected)) {
+    if ((!active_root->initialized) || (active_root->root_device != NULL)) {
       continue;
     }
 
@@ -1195,6 +1194,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
 }
 
 static void device_disconnect(usb_device_t *device) {
+  printf("Disconnect device %d\n", device->address);
   for (int port = 0; port < PIO_USB_HUB_PORT_CNT; port++) {
     if (device->child_devices[port] != 0) {
       device_disconnect(&usb_device[device->child_devices[port]]);
@@ -1370,17 +1370,17 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
   for (int root_idx = 0; root_idx < PIO_USB_ROOT_PORT_CNT; root_idx++) {
     if (root_port[root_idx].event == EVENT_CONNECT) {
       printf("Root %d connected\n", root_idx);
-      root_port[root_idx].event = EVENT_NONE;
       int dev_idx = device_pool_vacant();
       if (dev_idx >= 0) {
         on_device_connect(&pio_port[0], &root_port[root_idx], dev_idx);
       }
+      root_port[root_idx].event = EVENT_NONE;
     } else if (root_port[root_idx].event == EVENT_DISCONNECT) {
       printf("Root %d disconnected\n", root_idx);
-      root_port[root_idx].event = EVENT_NONE;
       root_port[root_idx].root_device->connected = false;
       root_port[root_idx].root_device->event = EVENT_DISCONNECT;
       root_port[root_idx].root_device = NULL;
+      root_port[root_idx].event = EVENT_NONE;
     }
   }
 
@@ -1401,11 +1401,13 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
       if (res != 0) {
         printf("Enumeration failed(%d)\n", res);
         // retry
-        if (device->parent_device != NULL) {
+        if (device->is_root) {
+          device->root->event = EVENT_DISCONNECT;
+        } else {
           set_hub_feature(device->parent_device, device->parent_port,
                           HUB_SET_PORT_RESET);
+          device_disconnect(device);
         }
-        device_disconnect(device);
       }
     } else if (device->event == EVENT_DISCONNECT) {
       device->event = EVENT_NONE;
@@ -1423,14 +1425,20 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
         hub_port_status_t status;
         int res = get_hub_port_status(device, port, &status);
         if (res != 0) {
+          printf("Failed to get port%d-%d status\n", device->address, port);
           continue;
         }
-        printf("port status:%d %d\n", status.port_change, status.port_status);
+        printf("port%d-%d status:%d %d\n", device->address, port,
+               status.port_change, status.port_status);
 
         if (status.port_change & HUB_CHANGE_PORT_CONNECTION) {
           clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
           if (status.port_status & HUB_STAT_PORT_CONNECTION) {
             printf("new device on port %d, reset port\n", port);
+            if (device->child_devices[port] != 0) {
+              printf("device is already assigned. disconnect previous\n");
+              device_disconnect(&usb_device[device->child_devices[port]]);
+            }
             if (device_pool_vacant() >= 0) {
               set_hub_feature(device, port, HUB_SET_PORT_RESET);
             } else {
@@ -1444,9 +1452,13 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
           }
         } else if (status.port_change & HUB_CHANGE_PORT_RESET) {
           printf("reset port %d complete\n", port);
-          clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
-          assign_new_device_to_port(
-              device, port, status.port_status & HUB_STAT_PORT_LOWSPEED);
+          int res = clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
+          if (res == 0) {
+            assign_new_device_to_port(
+                device, port, status.port_status & HUB_STAT_PORT_LOWSPEED);
+          }
+        } else if (status.port_change & HUB_CHANGE_PORT_ENABLE) {
+          clear_hub_feature(device, port, HUB_CLR_PORT_ENABLE);
         }
       }
     }
