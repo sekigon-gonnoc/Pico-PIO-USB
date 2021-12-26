@@ -1288,6 +1288,13 @@ static void stop_timer(void) {
   timer_active = false;
 }
 
+static void port_pin_drive_setting(const root_port_t *port) {
+  gpio_set_slew_rate(port->pin_dp, GPIO_SLEW_RATE_FAST);
+  gpio_set_slew_rate(port->pin_dm, GPIO_SLEW_RATE_FAST);
+  gpio_set_drive_strength(port->pin_dp, GPIO_DRIVE_STRENGTH_12MA);
+  gpio_set_drive_strength(port->pin_dm, GPIO_DRIVE_STRENGTH_12MA);
+}
+
 endpoint_t *pio_usb_get_endpoint(usb_device_t *device, uint8_t idx) {
   uint8_t ep_id = device->endpoint_id[idx];
   if (ep_id == 0) {
@@ -1305,6 +1312,7 @@ usb_device_t *pio_usb_init(const pio_usb_configuration_t *c) {
 
   apply_config(pp, c, &root_port[0]);
   initialize_host_programs(pp, c, &root_port[0]);
+  port_pin_drive_setting(&root_port[0]);
   root_port[0].initialized = true;
 
   pio_calculate_clkdiv_from_float((float)clock_get_hz(clk_sys) / 48000000,
@@ -1339,6 +1347,7 @@ int pio_usb_add_port(uint8_t pin_dp) {
       pio_gpio_init(pio_port[0].pio_usb_tx, pin_dp + 1);
       pio_sm_set_pindirs_with_mask(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
                                    (0b11 << pin_dp));
+      port_pin_drive_setting(&root_port[idx]);
       root_port[idx].initialized = true;
 
       return 0;
