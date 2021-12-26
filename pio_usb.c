@@ -1381,6 +1381,7 @@ void __no_inline_not_in_flash_func(pio_usb_task)(void) {
       root_port[root_idx].event = EVENT_NONE;
       root_port[root_idx].root_device->connected = false;
       root_port[root_idx].root_device->event = EVENT_DISCONNECT;
+      root_port[root_idx].root_device = NULL;
     }
   }
 
