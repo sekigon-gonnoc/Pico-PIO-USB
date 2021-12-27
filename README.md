@@ -17,7 +17,7 @@ https://user-images.githubusercontent.com/43873124/146642806-bdf34af6-4342-4a95-
 |FS Host|✔|
 |LS Host|✔|
 |Hub support|✔|
-|Multi port|🚧|
+|Multi port|✔|
 |FS Device|🚧|
 
 ## Examples
