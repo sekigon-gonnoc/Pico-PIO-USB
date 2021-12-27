@@ -69,7 +69,17 @@ typedef enum {
   EVENT_HUB_PORT_CHANGE,
 } usb_device_event_t;
 
-typedef struct struct_usb_device_t {
+typedef struct struct_usb_device_t usb_device_t;
+typedef struct struct_root_port_t {
+  volatile bool initialized;
+  volatile bool addr0_exists;
+  volatile uint pin_dp;
+  volatile uint pin_dm;
+  volatile usb_device_event_t event;
+  usb_device_t *root_device;
+} root_port_t;
+
+struct struct_usb_device_t {
   volatile bool connected;
   volatile bool enumerated;
   volatile usb_device_event_t event;
@@ -84,14 +94,9 @@ typedef struct struct_usb_device_t {
   uint8_t child_devices[PIO_USB_HUB_PORT_CNT];
   struct struct_usb_device_t *parent_device;
   uint8_t parent_port;
-} usb_device_t;
+  root_port_t *root;
+};
 
-typedef struct {
-  volatile uint pin_dp;
-  volatile uint pin_dm;
-  volatile usb_device_event_t event;
-  usb_device_t *root_device;
-} root_port_t;
 
 enum {
   USB_SYNC = 0x80,
@@ -224,6 +229,7 @@ enum {
   HUB_SET_PORT_RESET = 4,
   HUB_SET_PORT_POWER = 8,
   HUB_CLR_PORT_CONNECTION = 16,
+  HUB_CLR_PORT_ENABLE = 17,
   HUB_CLR_PORT_SUSPEND = 18,
   HUB_CLR_PORT_RESET = 20,
 };

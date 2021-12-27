@@ -156,6 +156,12 @@ low2:
 % c-sdk {
 #include "hardware/clocks.h"
 
+  static void __no_inline_not_in_flash_func(usb_tx_configure_pins)(PIO pio, uint sm, uint pin_dp) {
+    pio_sm_set_out_pins(pio, sm, pin_dp, 2);
+    pio_sm_set_set_pins(pio, sm, pin_dp, 2);
+    pio_sm_set_sideset_pins(pio, sm, pin_dp);
+  }
+
   static inline void usb_tx_fs_program_init(PIO pio, uint sm, uint offset,
                                          uint pin_dp) {
     pio_sm_set_pins_with_mask(pio, sm, (0b01 << pin_dp), (0b11 << pin_dp));
@@ -170,10 +176,6 @@ low2:
     // shifts to left, autopull, 8bit
     sm_config_set_out_shift(&c, true, true, 8);
 
-    sm_config_set_out_pins(&c, pin_dp, 2);
-    sm_config_set_set_pins(&c, pin_dp, 2);
-    sm_config_set_sideset_pins(&c, pin_dp);
-
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
 
     // run at 48MHz
@@ -182,6 +184,7 @@ low2:
     sm_config_set_clkdiv(&c, div);
 
     pio_sm_init(pio, sm, offset, &c);
+    usb_tx_configure_pins(pio, sm, pin_dp);
     pio_sm_set_enabled(pio, sm, true);
   }
 
@@ -199,10 +202,6 @@ low2:
     // shifts to left, autopull, 8bit
     sm_config_set_out_shift(&c, true, true, 8);
 
-    sm_config_set_out_pins(&c, pin_dp, 2);
-    sm_config_set_set_pins(&c, pin_dp, 2);
-    sm_config_set_sideset_pins(&c, pin_dp);
-
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
 
     // run at 6MHz
@@ -211,6 +210,7 @@ low2:
     sm_config_set_clkdiv(&c, div);
 
     pio_sm_init(pio, sm, offset, &c);
+    usb_tx_configure_pins(pio, sm, pin_dp);
     pio_sm_set_enabled(pio, sm, true);
   }
 

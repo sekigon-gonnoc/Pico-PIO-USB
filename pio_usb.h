@@ -5,6 +5,7 @@
 #include "usb_definitions.h"
 
 usb_device_t *pio_usb_init(const pio_usb_configuration_t *c);
+int pio_usb_add_port(uint8_t pin_dp);
 void pio_usb_task(void);
 
 endpoint_t *pio_usb_get_endpoint(usb_device_t *device, uint8_t idx);
