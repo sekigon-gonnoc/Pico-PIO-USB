@@ -18,6 +18,10 @@ void core1_main() {
   config.alarm_pool = (void*)alarm_pool_create(2, 1);
   usb_device = pio_usb_init(&config);
 
+  //// Call pio_usb_add_port to use multi port
+  // const uint8_t pin_dp2 = 8;
+  // pio_usb_add_port(pin_dp2);
+
   while (true) {
     pio_usb_task();
   }
@@ -37,24 +41,36 @@ int main() {
   multicore_launch_core1(core1_main);
 
   while (true) {
-    if (usb_device != NULL && usb_device->enumerated) {
-      // Print received packet to EPs
-      for (int ep_idx = 0; ep_idx < PIO_USB_EP_CNT; ep_idx++) {
-        endpoint_t *ep = &usb_device->endpoint[ep_idx];
+    if (usb_device != NULL) {
+      for (int dev_idx = 0; dev_idx < PIO_USB_DEVICE_CNT; dev_idx++) {
+        usb_device_t *device = &usb_device[dev_idx];
+        if (!device->connected) {
+          continue;
+        }
 
-        uint8_t temp[64];
-        int len = pio_usb_get_in_data(ep, temp, sizeof(temp));
+        // Print received packet to EPs
+        for (int ep_idx = 0; ep_idx < PIO_USB_DEV_EP_CNT; ep_idx++) {
+          endpoint_t *ep = pio_usb_get_endpoint(device, ep_idx);
 
-        if (len > 0) {
-          printf("%04x:%04x EP 0x%02x:\t", usb_device->vid, usb_device->pid,
-                 ep->ep_num);
-          for (int i = 0; i < len; i++) {
-            printf("%02x ", temp[i]);
+          if (ep == NULL) {
+            break;
           }
-          printf("\n");
+
+          uint8_t temp[64];
+          int len = pio_usb_get_in_data(ep, temp, sizeof(temp));
+
+          if (len > 0) {
+            printf("%04x:%04x EP 0x%02x:\t", device->vid, device->pid,
+                   ep->ep_num);
+            for (int i = 0; i < len; i++) {
+              printf("%02x ", temp[i]);
+            }
+            printf("\n");
+          }
         }
       }
     }
+    stdio_flush();
     sleep_us(10);
   }
 }

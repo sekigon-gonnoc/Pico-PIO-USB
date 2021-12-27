@@ -16,8 +16,8 @@ https://user-images.githubusercontent.com/43873124/146642806-bdf34af6-4342-4a95-
 |-|-|
 |FS Host|✔|
 |LS Host|✔|
-|Hub support|🚧|
-|Multi port|🚧|
+|Hub support|✔|
+|Multi port|✔|
 |FS Device|🚧|
 
 ## Examples
@@ -41,6 +41,6 @@ Another sample program for split keyboard with QMK
 
 - Two PIO
   - One PIO is for USB transmitter using 22 instruction and one state machine
-  - Another PIO is for USB receiver using 32 instruction and two state machine (No space for other program)
+  - Another PIO is for USB receiver using 29 instruction and two state machine
 - Two GPIO for D+/D- (Series 22ohm resitors are better)
-- 10KB ROM and RAM
+- 15KB ROM and RAM
