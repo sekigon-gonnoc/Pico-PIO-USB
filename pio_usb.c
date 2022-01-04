@@ -1015,6 +1015,39 @@ static int initialize_hub(usb_device_t *device) {
   return res;
 }
 
+static int get_string_descriptor(usb_device_t *device, uint8_t idx,
+                                 uint8_t *rx_buffer, uint8_t *str_buffer) {
+  int res = -1;
+  usb_setup_packet_t req = GET_DEVICE_DESCRIPTOR_REQ_DEFAULT;
+  req.value_msb = DESC_TYPE_STRING;
+  req.value_lsb = idx;
+  req.length_lsb = 1;
+  req.length_msb = 0;
+  update_packet_crc16(&req);
+  res = control_in_protocol(device, (uint8_t *)&req, sizeof(req), rx_buffer, 1);
+  if (res != 0) {
+    return res;
+  }
+
+  uint8_t len = rx_buffer[0];
+  req.length_lsb = len;
+  req.length_msb = 0;
+  update_packet_crc16(&req);
+  res =
+      control_in_protocol(device, (uint8_t *)&req, sizeof(req), rx_buffer, len);
+  if (res != 0) {
+    return res;
+  }
+
+  uint16_t *wchar_buffer = (uint16_t *)rx_buffer;
+  for (int i = 0; i < (len - 2) / 2; i++) {
+    str_buffer[i] = wchar_buffer[i + 1];
+  }
+  str_buffer[(len - 2) / 2] = '\0';
+
+  return res;
+}
+
 static int enumerate_device(usb_device_t *device, uint8_t address) {
   int res = 0;
   uint8_t rx_buffer[512];
@@ -1033,6 +1066,9 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   device->vid = desc->vid[0] | (desc->vid[1] << 8);
   device->pid = desc->pid[0] | (desc->pid[1] << 8);
   device->device_class = desc->class;
+  uint8_t idx_manufacture = desc->manufacture;
+  uint8_t idx_product = desc->product;
+  uint8_t idx_serial = desc->serial;
 
   printf("Enumerating %04x:%04x, class:%d, address:%d\n", device->vid,
          device->pid, device->device_class, address);
@@ -1047,6 +1083,25 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
     return res;
   }
   device->address = address;
+
+  uint8_t str[64];
+  if (idx_manufacture != 0) {
+    res = get_string_descriptor(device, idx_manufacture, rx_buffer, str);
+    printf("Manufacture:%s\n", str);
+    stdio_flush();
+  }
+
+  if (idx_product != 0) {
+    res = get_string_descriptor(device, idx_product, rx_buffer, str);
+    printf("Product:%s\n", str);
+    stdio_flush();
+  }
+
+  if (idx_serial != 0) {
+    res = get_string_descriptor(device, idx_serial, rx_buffer, str);
+    printf("Serial:%s\n", str);
+    stdio_flush();
+  }
 
   usb_setup_packet_t get_configuration_descriptor_request =
       GET_CONFIGURATION_DESCRIPTOR_REQ_DEFAULT;
