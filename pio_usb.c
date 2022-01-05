@@ -1087,19 +1087,31 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   uint8_t str[64];
   if (idx_manufacture != 0) {
     res = get_string_descriptor(device, idx_manufacture, rx_buffer, str);
-    printf("Manufacture:%s\n", str);
+    if (res == 0) {
+      printf("Manufacture:%s\n", str);
+    } else {
+      printf("Failed to get string descriptor (Manufacture)");
+    }
     stdio_flush();
   }
 
   if (idx_product != 0) {
     res = get_string_descriptor(device, idx_product, rx_buffer, str);
-    printf("Product:%s\n", str);
+    if (res == 0) {
+      printf("Product:%s\n", str);
+    } else {
+      printf("Failed to get string descriptor (Manufacture)");
+    }
     stdio_flush();
   }
 
   if (idx_serial != 0) {
     res = get_string_descriptor(device, idx_serial, rx_buffer, str);
-    printf("Serial:%s\n", str);
+    if (res == 0) {
+      printf("Serial:%s\n", str);
+    } else {
+      printf("Failed to get string descriptor (Manufacture)");
+    }
     stdio_flush();
   }
 
