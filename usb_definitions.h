@@ -56,7 +56,7 @@ typedef struct {
   volatile uint8_t buffer[64 + 4];
   volatile uint8_t packet_len;
   volatile bool new_data_flag;
-  volatile bool is_interrupt;
+  volatile uint8_t attr;
   volatile uint8_t interval;
   volatile uint8_t interval_counter;
   volatile uint8_t data_id;  // data0 or data1
@@ -126,7 +126,8 @@ enum {
 };
 
 enum {
-    EP_ATTR_INTERRUPT = 0x03,
+  EP_ATTR_INTERRUPT = 0x03,
+  EP_ATTR_ENUMERATING = 0x80
 };
 
 typedef struct {
