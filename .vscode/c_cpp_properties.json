@@ -1,7 +1,7 @@
 {
     "configurations": [
         {
-            "name": "Pico",
+            "name": "pico",
             "compileCommands": "${workspaceFolder}/example/build/compile_commands.json"
         }
     ],

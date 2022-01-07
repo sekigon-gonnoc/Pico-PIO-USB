@@ -16,14 +16,14 @@ void core1_main() {
   // To run USB SOF interrupt in core1, create alarm pool in core1.
   static pio_usb_configuration_t config = PIO_USB_DEFAULT_CONFIG;
   config.alarm_pool = (void*)alarm_pool_create(2, 1);
-  usb_device = pio_usb_init(&config);
+  usb_device = pio_usb_host_init(&config);
 
-  //// Call pio_usb_add_port to use multi port
+  //// Call pio_usb_host_add_port to use multi port
   // const uint8_t pin_dp2 = 8;
-  // pio_usb_add_port(pin_dp2);
+  // pio_usb_host_add_port(pin_dp2);
 
   while (true) {
-    pio_usb_task();
+    pio_usb_host_task();
   }
 }
 

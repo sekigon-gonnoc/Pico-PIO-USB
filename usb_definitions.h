@@ -20,6 +20,7 @@ typedef enum {
 
 typedef enum {
   STAGE_SETUP,
+  STAGE_DATA,
   STAGE_IN,
   STAGE_OUT,
   STAGE_STATUS,
@@ -27,12 +28,13 @@ typedef enum {
   STAGE_ERROR
 } setup_transfer_stage_t;
 typedef enum {
+  STAGE_IDLE,
   STAGE_DEVICE,
   STAGE_CONFIG,
   STAGE_CONFIG2,
   STAGE_INTERFACE,
   STAGE_ENDPOINT
-} usb_communication_stage_t;
+} usb_enumeration_stage_t;
 
 typedef struct {
   uint8_t *tx_address;
@@ -56,7 +58,7 @@ typedef struct {
   volatile uint8_t buffer[64 + 4];
   volatile uint8_t packet_len;
   volatile bool new_data_flag;
-  volatile bool is_interrupt;
+  volatile uint8_t attr;
   volatile uint8_t interval;
   volatile uint8_t interval_counter;
   volatile uint8_t data_id;  // data0 or data1
@@ -114,19 +116,23 @@ enum {
 };
 
 enum {
-    DESC_TYPE_STRING = 0x03,
-    DESC_TYPE_INTERFACE = 0x04,
-    DESC_TYPE_ENDPOINT = 0x05,
-    DESC_TYPE_HID = 0x21,
+  DESC_TYPE_DEVICE = 0x01,
+  DESC_TYPE_CONFIG = 0x02,
+  DESC_TYPE_STRING = 0x03,
+  DESC_TYPE_INTERFACE = 0x04,
+  DESC_TYPE_ENDPOINT = 0x05,
+  DESC_TYPE_HID = 0x21,
+  DESC_TYPE_HID_REPORT = 0x22,
 };
 
 enum {
-    CLASS_HID = 0x03,
-    CLASS_HUB = 0x09,
+  CLASS_HID = 0x03,
+  CLASS_HUB = 0x09,
 };
 
 enum {
-    EP_ATTR_INTERRUPT = 0x03,
+  EP_ATTR_INTERRUPT = 0x03,
+  EP_ATTR_ENUMERATING = 0x80
 };
 
 typedef struct {
@@ -163,7 +169,7 @@ typedef struct {
 typedef struct {
   uint8_t length;
   uint8_t type;
-  uint8_t string;
+  uint8_t string[62];
 } string_descriptor_t;
 
 typedef struct {
@@ -334,3 +340,10 @@ enum {
       USB_CRC16_PLACE, USB_CRC16_PLACE                                       \
     }                                                                        \
   }
+
+typedef struct {
+  const uint8_t *device;
+  const uint8_t *config;
+  const uint8_t **hid_report;
+  const string_descriptor_t *string;
+} usb_descriptor_buffers_t;
