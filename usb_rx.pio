@@ -5,6 +5,7 @@
 
 .define public IRQ_RX_BS_ERR 1   ; bit stuffinc error
 .define public IRQ_RX_EOP    2   ; eop detect flag
+.define public IRQ_RX_START  3   ; packet start flag
 
 .define SE0 0b00
 .define BR 5              ; bit repeat counter
@@ -72,7 +73,7 @@ bs_err:
 .wrap_target
 start:
     wait 1 pin 0 [7]    side db0
-    wait 0 pin 0 	    side db0
+    wait 0 pin 0 	    side db1
 
 read2to1:
     set y, BR   side db1
@@ -207,6 +208,8 @@ bs_err:
 
 .wrap_target
     wait 1 pin 0        ; wait dp is H to avoid catch previous EOP
+    wait 0 pin 0
+    irq IRQ_RX_START
 start:
     set y, 1
     mov isr, null 
@@ -226,6 +229,8 @@ wait_se0:
 
 .wrap_target
     wait 1 pin 0 side db1       ; wait dp is H to avoid catch previous EOP
+    wait 0 pin 0 side db1
+    irq IRQ_RX_START  side db0
 start:
     set y, 1 side db0;
     mov isr, null side db0
@@ -244,6 +249,8 @@ wait_se0:
 
 .wrap_target
     wait 1 pin 1        ; wait dm is H to avoid catch previous EOP
+    wait 1 pin 0
+    irq IRQ_RX_START
 start:
     set y, 1
     mov isr, null 
@@ -263,6 +270,8 @@ wait_se0:
 
 .wrap_target
     wait 1 pin 1 side db1       ; wait dm is H to avoid catch previous EOP
+    wait 1 pin 0 side db1
+    irq IRQ_RX_START  side db0
 start:
     set y, 1 side db0;
     mov isr, null side db0

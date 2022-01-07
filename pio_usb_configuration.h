@@ -40,3 +40,5 @@ typedef struct {
 #define PIO_USB_DEVICE_CNT 4
 #define PIO_USB_HUB_PORT_CNT 8
 #define PIO_USB_ROOT_PORT_CNT 2
+
+#define PIO_USB_EP_SIZE 64
