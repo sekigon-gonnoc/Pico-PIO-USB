@@ -699,7 +699,7 @@ static void __no_inline_not_in_flash_func(process_interrupt_transfer)(
       break;
     }
 
-    if (!ep->ep_num || !ep->is_interrupt) {
+    if (!ep->ep_num || ep->attr != EP_ATTR_INTERRUPT) {
       continue;
     }
 
@@ -948,7 +948,7 @@ int __no_inline_not_in_flash_func(pio_usb_get_in_data)(endpoint_t *ep,
 int __no_inline_not_in_flash_func(pio_usb_set_out_data)(endpoint_t *ep,
                                                           const uint8_t *buffer,
                                                           uint8_t len) {
-  if (ep->new_data_flag || !ep->is_interrupt || (ep->ep_num & EP_IN)) {
+  if (ep->new_data_flag || (ep->ep_num & EP_IN)) {
     return -1;
   }
 
@@ -1090,7 +1090,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
     if (res == 0) {
       printf("Manufacture:%s\n", str);
     } else {
-      printf("Failed to get string descriptor (Manufacture)");
+      printf("Failed to get string descriptor (Manufacture)\n");
     }
     stdio_flush();
   }
@@ -1100,7 +1100,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
     if (res == 0) {
       printf("Product:%s\n", str);
     } else {
-      printf("Failed to get string descriptor (Manufacture)");
+      printf("Failed to get string descriptor (Product)\n");
     }
     stdio_flush();
   }
@@ -1110,7 +1110,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
     if (res == 0) {
       printf("Serial:%s\n", str);
     } else {
-      printf("Failed to get string descriptor (Manufacture)");
+      printf("Failed to get string descriptor (Serial)\n");
     }
     stdio_flush();
   }
@@ -1208,7 +1208,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
             }
             ep->interval_counter = 0;
             ep->size = d->max_size[0] | (d->max_size[1] << 8);
-            ep->is_interrupt = true;
+            ep->attr = d->attr | EP_ATTR_ENUMERATING;
             ep->ep_num = d->epaddr;
           } else {
             printf("No empty EP\n");
@@ -1255,6 +1255,14 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
 
     configuration_descrptor_length -= descriptor[0];
     descriptor += descriptor[0];
+  }
+
+  for (int epidx = 0; epidx < PIO_USB_DEV_EP_CNT; epidx++) {
+    endpoint_t *ep = pio_usb_get_endpoint(device, epidx);
+    if (ep == NULL) {
+      break;
+    }
+    ep->attr &= ~EP_ATTR_ENUMERATING;
   }
 
   return res;
