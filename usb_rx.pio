@@ -249,7 +249,7 @@ wait_se0:
 
 .wrap_target
     wait 1 pin 1        ; wait dm is H to avoid catch previous EOP
-    wait 1 pin 0
+    wait 0 pin 1
     irq IRQ_RX_START
 start:
     set y, 1
@@ -270,7 +270,7 @@ wait_se0:
 
 .wrap_target
     wait 1 pin 1 side db1       ; wait dm is H to avoid catch previous EOP
-    wait 1 pin 0 side db1
+    wait 0 pin 1 side db1
     irq IRQ_RX_START  side db0
 start:
     set y, 1 side db0;
