@@ -12,7 +12,7 @@ assignees: ''
 
 **Describe the feature you want to implement here:**
 <!--
-Please describe in detail about the feature you want to implement to this project.
+Please describe in detail the feature you want to implement to this project.
 -->
 
 ---
