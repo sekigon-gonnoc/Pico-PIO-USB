@@ -153,7 +153,7 @@ typedef struct {
   uint8_t length;
   uint8_t type;
   uint8_t bcd_usb[2];
-  uint8_t class;
+  uint8_t device_class;
   uint8_t subclass;
   uint8_t protocol;
   uint8_t max_packet_size;
