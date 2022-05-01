@@ -6,7 +6,13 @@ pico_enable_stdio_usb(${target_name} 1)
 pico_generate_pio_header(${target_name} ${CMAKE_CURRENT_LIST_DIR}/../../usb_tx.pio)
 pico_generate_pio_header(${target_name} ${CMAKE_CURRENT_LIST_DIR}/../../usb_rx.pio)
 
-target_sources(${target_name} PRIVATE usb_device.c ../../pio_usb.c ../../usb_crc.c)
+target_sources(${target_name} PRIVATE
+  usb_device.c
+  ../../pio_usb.c
+ ../../pio_usb_device.c
+ ../../pio_usb_host.c
+  ../../usb_crc.c
+)
 target_link_options(${target_name} PRIVATE -Xlinker --print-memory-usage)
 target_compile_options(${target_name} PRIVATE -Wall -Wextra)
 target_include_directories(${target_name} PRIVATE ../../)
