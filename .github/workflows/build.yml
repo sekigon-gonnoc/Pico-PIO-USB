@@ -53,3 +53,12 @@ jobs:
         cd build
         cmake ..
         make
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: example_binaries
+        path: |
+          example/build/usb_device/usb_device.uf2
+          example/build/usb_device/usb_device.hex
+          example/build/capture_hid_report/capture_hid_report.uf2
+          example/build/capture_hid_report/capture_hid_report.hex
