@@ -8,3 +8,4 @@ pico_sdk_init()
 
 add_subdirectory(capture_hid_report)
 add_subdirectory(usb_device)
+add_subdirectory(host_hid_to_device_cdc)
