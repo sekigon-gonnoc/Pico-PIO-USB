@@ -617,7 +617,7 @@ static int __no_inline_not_in_flash_func(control_out_protocol)(
     pipe->out_data_packet.tx_length = out_length;
     pipe->operation = CONTROL_OUT;
 
-    pio_usb_host_send_setup(0, device->address, setup_data);
+    pio_usb_host_send_setup(device->root - pio_usb_root_port, device->address, setup_data);
   } else {
     return -1;
   }
@@ -661,7 +661,7 @@ static int __no_inline_not_in_flash_func(control_in_protocol)(
     pipe->request_length = request_length;
     pipe->operation = CONTROL_IN;
 
-    pio_usb_host_send_setup(0, device->address, tx_data);
+    pio_usb_host_send_setup(device->root - pio_usb_root_port, device->address, tx_data);
   } else {
     return -1;
   }
