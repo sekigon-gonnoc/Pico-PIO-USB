@@ -368,32 +368,20 @@ static inline __force_inline endpoint_t * _find_ep(uint8_t root_idx,
 bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
                                 uint8_t const *desc_endpoint, bool need_pre) {
   const endpoint_descriptor_t *d = (const endpoint_descriptor_t *)desc_endpoint;
-  endpoint_t *ep = NULL;
-
-  if (device_address == 0) {
-    // dedicate first endpoint for address0
-    ep = PIO_USB_ENDPOINT(0);
-  } else {
-    for (int ep_pool_idx = 1; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
-      // ep size is used as valid indicator
-      if (PIO_USB_ENDPOINT(ep_pool_idx)->size == 0) {
-        ep = PIO_USB_ENDPOINT(ep_pool_idx);
-        break;
-      }
+  for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
+    endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
+    // ep size is used as valid indicator
+    if (ep->size == 0) {
+      pio_usb_ll_configure_endpoint(ep, desc_endpoint);
+      ep->root_idx = root_idx;
+      ep->dev_addr = device_address;
+      ep->need_pre = need_pre;
+      ep->is_tx = (d->epaddr & 0x80) ? false : true; // host endpoint out is tx
+      return true;
     }
   }
 
-  if (ep == NULL) {
-    return false;
-  }
-
-  pio_usb_ll_configure_endpoint(ep, desc_endpoint);
-  ep->root_idx = root_idx;
-  ep->dev_addr = device_address;
-  ep->need_pre = need_pre;
-  ep->is_tx = (d->epaddr & 0x80) ? false : true; // host endpoint out is tx
-
-  return true;
+  return false;
 }
 
 bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
@@ -778,6 +766,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
                             sizeof(get_device_descriptor_request), rx_buffer, 18);
   if (res != 0) {
+    pio_usb_host_close_device(device->root - pio_usb_root_port, 0);
     return res;
   }
 
@@ -798,6 +787,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   set_address_request.value_msb = 0;
   res = control_out_protocol(device, (uint8_t *)&set_address_request,
                              sizeof(set_address_request), NULL, 0);
+  pio_usb_host_close_device(device->root - pio_usb_root_port, 0);
   if (res != 0) {
     return res;
   }
