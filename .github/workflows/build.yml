@@ -24,7 +24,7 @@ jobs:
         # checkout tinyusb in pico-sdk and switch to PR branch
         git -C ~/pico-sdk submodule update --init
         git -C ~/pico-sdk/lib/tinyusb fetch
-        git -C ~/pico-sdk/lib/tinyusb checkout pio-host
+        git -C ~/pico-sdk/lib/tinyusb checkout master
 
     - name: Set Toolchain URL
       run: echo >> $GITHUB_ENV TOOLCHAIN_URL=https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v10.2.1-1.1/xpack-arm-none-eabi-gcc-10.2.1-1.1-linux-x64.tar.gz
