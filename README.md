@@ -4,8 +4,6 @@ USB host/device implementation using PIO of raspberry pi pico (RP2040).
 
 You can add additional USB port to RP2040.
 
-🚧 **This library is WIP. API may be changed drastically in future.** 🚧
-
 ## Demo
 
 https://user-images.githubusercontent.com/43873124/146642806-bdf34af6-4342-4a95-bfca-229cdc4bdca2.mp4
