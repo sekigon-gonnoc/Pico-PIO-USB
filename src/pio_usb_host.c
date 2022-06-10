@@ -25,7 +25,7 @@ static bool timer_active;
 
 static volatile bool cancel_timer_flag;
 static volatile bool start_timer_flag;
-static uint32_t int_stat;
+static __unused uint32_t int_stat;
 
 static bool sof_timer(repeating_timer_t *_rt);
 
@@ -48,7 +48,7 @@ static void start_timer(alarm_pool_t *alarm_pool) {
   timer_active = true;
 }
 
-static void stop_timer(void) {
+static __unused void stop_timer(void) {
   cancel_repeating_timer(&sof_rt);
   timer_active = false;
 }
