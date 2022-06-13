@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -70,8 +70,13 @@ static uint8_t const keycode2ascii[128][2] =  { HID_KEYCODE_TO_ASCII };
 void core1_main() {
   sleep_ms(10);
 
-  // To run USB SOF interrupt in core1, init host stack for pio_usb (roothub port1)
-  // on core1
+  // Use tuh_configure() to pass pio configuration to the host stack
+  // Note: tuh_configure() must be called before
+  pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
+  tuh_configure(1, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg);
+
+  // To run USB SOF interrupt in core1, init host stack for pio_usb (roothub
+  // port1) on core1
   tuh_init(1);
 
   while (true) {
