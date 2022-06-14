@@ -48,7 +48,7 @@ jobs:
 
     - name: Build
       run: |
-        cd example
+        cd examples
         mkdir build
         cd build
         cmake ..
@@ -58,9 +58,9 @@ jobs:
       with:
         name: example_binaries
         path: |
-          example/build/usb_device/usb_device.uf2
-          example/build/usb_device/usb_device.hex
-          example/build/capture_hid_report/capture_hid_report.uf2
-          example/build/capture_hid_report/capture_hid_report.hex
-          example/build/host_hid_to_device_cdc/host_hid_to_device_cdc.uf2
-          example/build/host_hid_to_device_cdc/host_hid_to_device_cdc.hex
+          examples/build/usb_device/usb_device.uf2
+          examples/build/usb_device/usb_device.hex
+          examples/build/capture_hid_report/capture_hid_report.uf2
+          examples/build/capture_hid_report/capture_hid_report.hex
+          examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.uf2
+          examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.hex
