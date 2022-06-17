@@ -152,7 +152,7 @@ pio_usb_ll_get_transaction_len(endpoint_t *ep) {
 //--------------------------------------------------------------------
 
 // Host IRQ Handler
-__attribute__((weak)) void pio_usb_host_irq_handler(uint8_t root_idx);
+void pio_usb_host_irq_handler(uint8_t root_idx);
 
 void pio_usb_host_port_reset_start(uint8_t root_idx);
 void pio_usb_host_port_reset_end(uint8_t root_idx);
@@ -172,7 +172,7 @@ bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
 //--------------------------------------------------------------------
 
 // Device IRQ Handler
-__attribute__((weak)) void pio_usb_device_irq_handler(uint8_t root_idx);
+void pio_usb_device_irq_handler(uint8_t root_idx);
 
 void pio_usb_device_set_address(uint8_t dev_addr);
 bool pio_usb_device_endpoint_open(uint8_t const *desc_endpoint);
