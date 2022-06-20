@@ -757,12 +757,17 @@ static int get_string_descriptor(usb_device_t *device, uint8_t idx,
 
 static int enumerate_device(usb_device_t *device, uint8_t address) {
   int res = 0;
+  int retry = 5;
   uint8_t rx_buffer[512];
 
   usb_setup_packet_t get_device_descriptor_request =
       GET_DEVICE_DESCRIPTOR_REQ_DEFAULT;
-  res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
-                            sizeof(get_device_descriptor_request), rx_buffer, 18);
+  do {
+    res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
+                              sizeof(get_device_descriptor_request), rx_buffer,
+                              18);
+  } while (res != 0 && --retry > 0 && (busy_wait_ms(10), true));
+
   if (res != 0) {
     pio_usb_host_close_device(device->root - pio_usb_root_port, 0);
     return res;
@@ -1118,6 +1123,7 @@ void __no_inline_not_in_flash_func(pio_usb_host_task)(void) {
       pio_usb_root_port[root_idx].root_device->connected = false;
       pio_usb_root_port[root_idx].root_device->event = EVENT_DISCONNECT;
       pio_usb_root_port[root_idx].root_device = NULL;
+      pio_usb_root_port[root_idx].connected = false;
       pio_usb_root_port[root_idx].event = EVENT_NONE;
     }
   }
