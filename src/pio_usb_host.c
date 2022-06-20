@@ -125,41 +125,41 @@ static __always_inline void override_pio_rx_program(PIO pio,
 
 static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
     pio_port_t const *pp, root_port_t *port) {
-  override_pio_program(pp->pio_usb_tx, &usb_tx_fs_program, pp->offset_tx);
+  override_pio_program(pp->pio_usb_tx, pp->fs_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_fs_program,
-                          &usb_rx_fs_debug_program, pp->offset_rx,
+  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_program,
+                          &usb_rx_debug_program, pp->offset_rx,
                           pp->debug_pin_rx);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_fs_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_fs_program,
-                          &eop_detect_fs_debug_program, pp->offset_eop,
+  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_pin0_program,
+                          &eop_detect_pin0_debug_program, pp->offset_eop,
                           pp->debug_pin_eop);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_fs_rx);
 
-  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp, port->pin_dm);
+  usb_eop_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp, port->pin_dm);
   usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
 }
 
 static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
     pio_port_t const *pp, root_port_t *port) {
-  override_pio_program(pp->pio_usb_tx, &usb_tx_ls_program, pp->offset_tx);
+  override_pio_program(pp->pio_usb_tx, pp->ls_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_ls_program,
-                          &usb_rx_ls_debug_program, pp->offset_rx,
+  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_program,
+                          &usb_rx_debug_program, pp->offset_rx,
                           pp->debug_pin_rx);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_ls_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_ls_program,
-                          &eop_detect_ls_debug_program, pp->offset_eop,
+  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_pin1_program,
+                          &eop_detect_pin1_debug_program, pp->offset_eop,
                           pp->debug_pin_eop);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
 
-  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp, port->pin_dm);
+  usb_eop_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp, port->pin_dm);
   usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dm);
 }
 
