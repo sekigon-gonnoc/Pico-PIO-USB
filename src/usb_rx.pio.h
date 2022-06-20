@@ -12,14 +12,14 @@
 #define IRQ_RX_EOP 2
 #define IRQ_RX_START 3
 
-// --------- //
-// usb_rx_fs //
-// --------- //
+// ------ //
+// usb_rx //
+// ------ //
 
-#define usb_rx_fs_wrap_target 0
-#define usb_rx_fs_wrap 20
+#define usb_rx_wrap_target 0
+#define usb_rx_wrap 20
 
-static const uint16_t usb_rx_fs_program_instructions[] = {
+static const uint16_t usb_rx_program_instructions[] = {
             //     .wrap_target
     0x27a0, //  0: wait   1 pin, 0               [7] 
     0x2020, //  1: wait   0 pin, 0                   
@@ -46,27 +46,27 @@ static const uint16_t usb_rx_fs_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_fs_program = {
-    .instructions = usb_rx_fs_program_instructions,
+static const struct pio_program usb_rx_program = {
+    .instructions = usb_rx_program_instructions,
     .length = 21,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_fs_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_rx_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_fs_wrap_target, offset + usb_rx_fs_wrap);
+    sm_config_set_wrap(&c, offset + usb_rx_wrap_target, offset + usb_rx_wrap);
     return c;
 }
 #endif
 
-// --------------- //
-// usb_rx_fs_debug //
-// --------------- //
+// ------------ //
+// usb_rx_debug //
+// ------------ //
 
-#define usb_rx_fs_debug_wrap_target 0
-#define usb_rx_fs_debug_wrap 20
+#define usb_rx_debug_wrap_target 0
+#define usb_rx_debug_wrap 20
 
-static const uint16_t usb_rx_fs_debug_program_instructions[] = {
+static const uint16_t usb_rx_debug_program_instructions[] = {
             //     .wrap_target
     0x27a0, //  0: wait   1 pin, 0        side 0 [7] 
     0x3020, //  1: wait   0 pin, 0        side 1     
@@ -93,123 +93,28 @@ static const uint16_t usb_rx_fs_debug_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_fs_debug_program = {
-    .instructions = usb_rx_fs_debug_program_instructions,
+static const struct pio_program usb_rx_debug_program = {
+    .instructions = usb_rx_debug_program_instructions,
     .length = 21,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_fs_debug_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_rx_debug_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_fs_debug_wrap_target, offset + usb_rx_fs_debug_wrap);
+    sm_config_set_wrap(&c, offset + usb_rx_debug_wrap_target, offset + usb_rx_debug_wrap);
     sm_config_set_sideset(&c, 1, false, false);
     return c;
 }
 #endif
 
-// --------- //
-// usb_rx_ls //
-// --------- //
-
-#define usb_rx_ls_wrap_target 0
-#define usb_rx_ls_wrap 20
-
-static const uint16_t usb_rx_ls_program_instructions[] = {
-            //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0               [7] 
-    0x2020, //  1: wait   0 pin, 0                   
-    0xe045, //  2: set    y, 5                       
-    0x00c7, //  3: jmp    pin, 7                     
-    0xe120, //  4: set    x, 0                   [1] 
-    0x4121, //  5: in     x, 1                   [1] 
-    0x010b, //  6: jmp    11                     [1] 
-    0xe221, //  7: set    x, 1                   [2] 
-    0x4021, //  8: in     x, 1                       
-    0x0283, //  9: jmp    y--, 3                 [2] 
-    0x06d4, // 10: jmp    pin, 20                [6] 
-    0xe045, // 11: set    y, 5                       
-    0x00d1, // 12: jmp    pin, 17                    
-    0xe321, // 13: set    x, 1                   [3] 
-    0x4121, // 14: in     x, 1                   [1] 
-    0x008c, // 15: jmp    y--, 12                    
-    0x0602, // 16: jmp    2                      [6] 
-    0xe320, // 17: set    x, 0                   [3] 
-    0x4021, // 18: in     x, 1                       
-    0x0002, // 19: jmp    2                          
-    0xc021, // 20: irq    wait 1                     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_ls_program = {
-    .instructions = usb_rx_ls_program_instructions,
-    .length = 21,
-    .origin = -1,
-};
-
-static inline pio_sm_config usb_rx_ls_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_ls_wrap_target, offset + usb_rx_ls_wrap);
-    return c;
-}
-#endif
-
 // --------------- //
-// usb_rx_ls_debug //
+// eop_detect_pin0 //
 // --------------- //
 
-#define usb_rx_ls_debug_wrap_target 0
-#define usb_rx_ls_debug_wrap 20
+#define eop_detect_pin0_wrap_target 0
+#define eop_detect_pin0_wrap 9
 
-static const uint16_t usb_rx_ls_debug_program_instructions[] = {
-            //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0        side 0 [7] 
-    0x2020, //  1: wait   0 pin, 0        side 0     
-    0xf045, //  2: set    y, 5            side 1     
-    0x10c7, //  3: jmp    pin, 7          side 1     
-    0xe120, //  4: set    x, 0            side 0 [1] 
-    0x5121, //  5: in     x, 1            side 1 [1] 
-    0x110b, //  6: jmp    11              side 1 [1] 
-    0xe221, //  7: set    x, 1            side 0 [2] 
-    0x5021, //  8: in     x, 1            side 1     
-    0x1283, //  9: jmp    y--, 3          side 1 [2] 
-    0x16d4, // 10: jmp    pin, 20         side 1 [6] 
-    0xf045, // 11: set    y, 5            side 1     
-    0x10d1, // 12: jmp    pin, 17         side 1     
-    0xe321, // 13: set    x, 1            side 0 [3] 
-    0x5121, // 14: in     x, 1            side 1 [1] 
-    0x108c, // 15: jmp    y--, 12         side 1     
-    0x1602, // 16: jmp    2               side 1 [6] 
-    0xe320, // 17: set    x, 0            side 0 [3] 
-    0x5021, // 18: in     x, 1            side 1     
-    0x1002, // 19: jmp    2               side 1     
-    0xc021, // 20: irq    wait 1          side 0     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_ls_debug_program = {
-    .instructions = usb_rx_ls_debug_program_instructions,
-    .length = 21,
-    .origin = -1,
-};
-
-static inline pio_sm_config usb_rx_ls_debug_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_ls_debug_wrap_target, offset + usb_rx_ls_debug_wrap);
-    sm_config_set_sideset(&c, 1, false, false);
-    return c;
-}
-#endif
-
-// ------------- //
-// eop_detect_fs //
-// ------------- //
-
-#define eop_detect_fs_wrap_target 0
-#define eop_detect_fs_wrap 9
-
-static const uint16_t eop_detect_fs_program_instructions[] = {
+static const uint16_t eop_detect_pin0_program_instructions[] = {
             //     .wrap_target
     0x20a0, //  0: wait   1 pin, 0                   
     0x2020, //  1: wait   0 pin, 0                   
@@ -225,27 +130,27 @@ static const uint16_t eop_detect_fs_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_fs_program = {
-    .instructions = eop_detect_fs_program_instructions,
+static const struct pio_program eop_detect_pin0_program = {
+    .instructions = eop_detect_pin0_program_instructions,
     .length = 10,
     .origin = -1,
 };
 
-static inline pio_sm_config eop_detect_fs_program_get_default_config(uint offset) {
+static inline pio_sm_config eop_detect_pin0_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_fs_wrap_target, offset + eop_detect_fs_wrap);
+    sm_config_set_wrap(&c, offset + eop_detect_pin0_wrap_target, offset + eop_detect_pin0_wrap);
     return c;
 }
 #endif
 
-// ------------------- //
-// eop_detect_fs_debug //
-// ------------------- //
+// --------------------- //
+// eop_detect_pin0_debug //
+// --------------------- //
 
-#define eop_detect_fs_debug_wrap_target 0
-#define eop_detect_fs_debug_wrap 9
+#define eop_detect_pin0_debug_wrap_target 0
+#define eop_detect_pin0_debug_wrap 9
 
-static const uint16_t eop_detect_fs_debug_program_instructions[] = {
+static const uint16_t eop_detect_pin0_debug_program_instructions[] = {
             //     .wrap_target
     0x30a0, //  0: wait   1 pin, 0        side 1     
     0x3020, //  1: wait   0 pin, 0        side 1     
@@ -261,28 +166,28 @@ static const uint16_t eop_detect_fs_debug_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_fs_debug_program = {
-    .instructions = eop_detect_fs_debug_program_instructions,
+static const struct pio_program eop_detect_pin0_debug_program = {
+    .instructions = eop_detect_pin0_debug_program_instructions,
     .length = 10,
     .origin = -1,
 };
 
-static inline pio_sm_config eop_detect_fs_debug_program_get_default_config(uint offset) {
+static inline pio_sm_config eop_detect_pin0_debug_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_fs_debug_wrap_target, offset + eop_detect_fs_debug_wrap);
+    sm_config_set_wrap(&c, offset + eop_detect_pin0_debug_wrap_target, offset + eop_detect_pin0_debug_wrap);
     sm_config_set_sideset(&c, 1, false, false);
     return c;
 }
 #endif
 
-// ------------- //
-// eop_detect_ls //
-// ------------- //
+// --------------- //
+// eop_detect_pin1 //
+// --------------- //
 
-#define eop_detect_ls_wrap_target 0
-#define eop_detect_ls_wrap 9
+#define eop_detect_pin1_wrap_target 0
+#define eop_detect_pin1_wrap 9
 
-static const uint16_t eop_detect_ls_program_instructions[] = {
+static const uint16_t eop_detect_pin1_program_instructions[] = {
             //     .wrap_target
     0x20a1, //  0: wait   1 pin, 1                   
     0x2021, //  1: wait   0 pin, 1                   
@@ -298,27 +203,27 @@ static const uint16_t eop_detect_ls_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_ls_program = {
-    .instructions = eop_detect_ls_program_instructions,
+static const struct pio_program eop_detect_pin1_program = {
+    .instructions = eop_detect_pin1_program_instructions,
     .length = 10,
     .origin = -1,
 };
 
-static inline pio_sm_config eop_detect_ls_program_get_default_config(uint offset) {
+static inline pio_sm_config eop_detect_pin1_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_ls_wrap_target, offset + eop_detect_ls_wrap);
+    sm_config_set_wrap(&c, offset + eop_detect_pin1_wrap_target, offset + eop_detect_pin1_wrap);
     return c;
 }
 #endif
 
-// ------------------- //
-// eop_detect_ls_debug //
-// ------------------- //
+// --------------------- //
+// eop_detect_pin1_debug //
+// --------------------- //
 
-#define eop_detect_ls_debug_wrap_target 0
-#define eop_detect_ls_debug_wrap 9
+#define eop_detect_pin1_debug_wrap_target 0
+#define eop_detect_pin1_debug_wrap 9
 
-static const uint16_t eop_detect_ls_debug_program_instructions[] = {
+static const uint16_t eop_detect_pin1_debug_program_instructions[] = {
             //     .wrap_target
     0x30a1, //  0: wait   1 pin, 1        side 1     
     0x3021, //  1: wait   0 pin, 1        side 1     
@@ -334,41 +239,44 @@ static const uint16_t eop_detect_ls_debug_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_ls_debug_program = {
-    .instructions = eop_detect_ls_debug_program_instructions,
+static const struct pio_program eop_detect_pin1_debug_program = {
+    .instructions = eop_detect_pin1_debug_program_instructions,
     .length = 10,
     .origin = -1,
 };
 
-static inline pio_sm_config eop_detect_ls_debug_program_get_default_config(uint offset) {
+static inline pio_sm_config eop_detect_pin1_debug_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_ls_debug_wrap_target, offset + eop_detect_ls_debug_wrap);
+    sm_config_set_wrap(&c, offset + eop_detect_pin1_debug_wrap_target, offset + eop_detect_pin1_debug_wrap);
     sm_config_set_sideset(&c, 1, false, false);
     return c;
 }
 
 #include "hardware/clocks.h"
-  static void __no_inline_not_in_flash_func(usb_rx_configure_pins)(PIO pio, uint sm, uint pin_dp) {
-    pio_sm_set_in_pins(pio, sm, pin_dp);
+static void __no_inline_not_in_flash_func(usb_rx_configure_pins)(PIO pio, uint sm, uint data_pin) {
+    pio_sm_set_in_pins(pio, sm, data_pin);
     pio->sm[sm].execctrl = (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
-                (pin_dp << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
-  }
-static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
+                (data_pin << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
+}
+static void __no_inline_not_in_flash_func(usb_eop_configure_pins)(PIO pio, uint sm, uint pin_dp, uint pin_dm) {
+    uint pin0 = pin_dp < pin_dm ? pin_dp : pin_dm;
+    pio_sm_set_in_pins(pio, sm, pin0);
+}
+static inline void usb_rx_program_init(PIO pio, uint sm, uint offset, uint pin_dp, uint pin_dm, int pin_debug) {
+    pio_sm_set_pindirs_with_mask(pio, sm, 0, (1 << pin_dp));
+    pio_sm_set_pindirs_with_mask(pio, sm, 0, (1 << pin_dm));
     gpio_pull_down(pin_dp);
-    gpio_pull_down(pin_dp + 1);  // dm
+    gpio_pull_down(pin_dm);
     pio_sm_config c;
     if (pin_debug < 0) {
-      c = usb_rx_fs_program_get_default_config(offset);
+      c = usb_rx_program_get_default_config(offset);
     } else {
-      c = usb_rx_fs_debug_program_get_default_config(offset);
+      c = usb_rx_debug_program_get_default_config(offset);
       pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
       pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
       pio_gpio_init(pio, pin_debug);
       sm_config_set_sideset_pins(&c, pin_debug);
     }
-    sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-    sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
     // Shift to right, autopull enabled, 8bit
     sm_config_set_in_shift(&c, true, true, 8);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
@@ -379,46 +287,19 @@ static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pi
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, false);
 }
-static inline void usb_rx_ls_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
-    gpio_pull_down(pin_dp);
-    gpio_pull_down(pin_dp + 1);  // dm
-    pio_sm_config c;
-    if (pin_debug < 0) {
-      c = usb_rx_ls_program_get_default_config(offset);
-    } else {
-      c = usb_rx_ls_debug_program_get_default_config(offset);
-      pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
-      pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
-      pio_gpio_init(pio, pin_debug);
-      sm_config_set_sideset_pins(&c, pin_debug);
-    }
-    sm_config_set_in_pins(&c, pin_dp + 1);  // for WAIT, IN
-    sm_config_set_jmp_pin(&c, pin_dp + 1);  // for JMP
-    // Shift to right, autopull enabled, 8bit
-    sm_config_set_in_shift(&c, true, true, 8);
-    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
-    // Run at 12Mhz
-    // system clock should be multiple of 12MHz
-    float div = (float)clock_get_hz(clk_sys) / (12000000);
-    sm_config_set_clkdiv(&c, div);
-    pio_sm_init(pio, sm, offset, &c);
-    pio_sm_set_enabled(pio, sm, false);
-}
-static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
-                                           uint pin_dp, bool is_fs, int pin_debug) {
+static inline void eop_detect_program_init(PIO pio, uint sm, uint offset,
+                                           uint pin_dp, uint pin_dm, bool is_fs, int pin_debug) {
   pio_sm_config c;
   if (pin_debug < 0) {
-    c = eop_detect_fs_program_get_default_config(offset);
+    c = eop_detect_pin0_program_get_default_config(offset);
   } else {
-    c = eop_detect_fs_debug_program_get_default_config(offset);
+    c = eop_detect_pin0_debug_program_get_default_config(offset);
     pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
     pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
     pio_gpio_init(pio, pin_debug);
     sm_config_set_sideset_pins(&c, pin_debug);
   }
-  sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-  sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
+  usb_eop_configure_pins(pio, sm, pin_dp, pin_dm);
   sm_config_set_in_shift(&c, false, false, 8);
   float div;
   if (is_fs) {
@@ -426,23 +307,6 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
   } else {
     div = (float)clock_get_hz(clk_sys) / (12000000);
   }
-  sm_config_set_clkdiv(&c, div);
-  pio_sm_init(pio, sm, offset, &c);
-  pio_sm_set_enabled(pio, sm, true);
-}
-static inline void eop_detect_ls_program_init(PIO pio, uint sm, uint offset,
-                                           uint pin_dp, int pin_debug) {
-  pio_sm_config c;
-  if (pin_debug < 0) {
-    c = eop_detect_ls_program_get_default_config(offset);
-  } else {
-    c = eop_detect_ls_debug_program_get_default_config(offset);
-  }
-  sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-  sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
-  sm_config_set_in_shift(&c, false, false, 8);
-  float div;
-  div = (float)clock_get_hz(clk_sys) / (12000000);
   sm_config_set_clkdiv(&c, div);
   pio_sm_init(pio, sm, offset, &c);
   pio_sm_set_enabled(pio, sm, true);
