@@ -125,41 +125,41 @@ static __always_inline void override_pio_rx_program(PIO pio,
 
 static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
     pio_port_t const *pp, root_port_t *port) {
-  override_pio_program(pp->pio_usb_tx, &usb_tx_fs_program, pp->offset_tx);
+  override_pio_program(pp->pio_usb_tx, pp->fs_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_fs_program,
-                          &usb_rx_fs_debug_program, pp->offset_rx,
+  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_program,
+                          &usb_rx_debug_program, pp->offset_rx,
                           pp->debug_pin_rx);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_fs_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_fs_program,
-                          &eop_detect_fs_debug_program, pp->offset_eop,
+  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_pin0_program,
+                          &eop_detect_pin0_debug_program, pp->offset_eop,
                           pp->debug_pin_eop);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_fs_rx);
 
-  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp, port->pin_dm);
+  usb_eop_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp, port->pin_dm);
   usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
 }
 
 static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
     pio_port_t const *pp, root_port_t *port) {
-  override_pio_program(pp->pio_usb_tx, &usb_tx_ls_program, pp->offset_tx);
+  override_pio_program(pp->pio_usb_tx, pp->ls_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_ls_program,
-                          &usb_rx_ls_debug_program, pp->offset_rx,
+  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_program,
+                          &usb_rx_debug_program, pp->offset_rx,
                           pp->debug_pin_rx);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_ls_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_ls_program,
-                          &eop_detect_ls_debug_program, pp->offset_eop,
+  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_pin1_program,
+                          &eop_detect_pin1_debug_program, pp->offset_eop,
                           pp->debug_pin_eop);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
 
-  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp, port->pin_dm);
+  usb_eop_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp, port->pin_dm);
   usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dm);
 }
 
@@ -757,12 +757,17 @@ static int get_string_descriptor(usb_device_t *device, uint8_t idx,
 
 static int enumerate_device(usb_device_t *device, uint8_t address) {
   int res = 0;
+  int retry = 5;
   uint8_t rx_buffer[512];
 
   usb_setup_packet_t get_device_descriptor_request =
       GET_DEVICE_DESCRIPTOR_REQ_DEFAULT;
-  res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
-                            sizeof(get_device_descriptor_request), rx_buffer, 18);
+  do {
+    res = control_in_protocol(device, (uint8_t *)&get_device_descriptor_request,
+                              sizeof(get_device_descriptor_request), rx_buffer,
+                              18);
+  } while (res != 0 && --retry > 0 && (busy_wait_ms(10), true));
+
   if (res != 0) {
     pio_usb_host_close_device(device->root - pio_usb_root_port, 0);
     return res;
@@ -1118,6 +1123,7 @@ void __no_inline_not_in_flash_func(pio_usb_host_task)(void) {
       pio_usb_root_port[root_idx].root_device->connected = false;
       pio_usb_root_port[root_idx].root_device->event = EVENT_DISCONNECT;
       pio_usb_root_port[root_idx].root_device = NULL;
+      pio_usb_root_port[root_idx].connected = false;
       pio_usb_root_port[root_idx].event = EVENT_NONE;
     }
   }
