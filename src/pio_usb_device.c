@@ -295,8 +295,6 @@ bool pio_usb_device_transfer(uint8_t ep_address, uint8_t *buffer,
 //--------------------------------------------------------------------+
 // USB Device Stack
 //--------------------------------------------------------------------+
-#ifndef PIO_USB_USE_TINYUSB
-
 static usb_descriptor_buffers_t descriptor_buffers;
 static int8_t ep0_desc_request_type = -1;
 static uint16_t ep0_desc_request_len;
@@ -427,7 +425,8 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
   return res;
 }
 
-void __no_inline_not_in_flash_func(pio_usb_device_irq_handler)(uint8_t root_idx) {
+// IRQ Handler
+static void __no_inline_not_in_flash_func(__pio_usb_device_irq_handler)(uint8_t root_idx) {
   root_port_t *root = PIO_USB_ROOT_PORT(root_idx);
   usb_device_t *dev = &pio_usb_device[0];
 
@@ -473,6 +472,7 @@ void __no_inline_not_in_flash_func(pio_usb_device_irq_handler)(uint8_t root_idx)
   root->ints &= ~ints;
 }
 
-#endif // PIO_USB_USE_TINYUSB
+// weak alias to __pio_usb_device_irq_handler
+void pio_usb_device_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_device_irq_handler")));
 
 #pragma GCC pop_options

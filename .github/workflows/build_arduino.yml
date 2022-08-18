@@ -1,0 +1,52 @@
+name: Build Arduino
+
+on:
+  pull_request:
+  push:
+  release:
+    types:
+      - created
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+        # Alphabetical order
+        - 'rpipico'
+
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup Python
+      uses: actions/setup-python@v3
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install Arduino CLI
+      run: |
+        # make all our directories we need for files and libraries
+        mkdir $HOME/.arduino15
+        mkdir $HOME/.arduino15/packages
+        mkdir $HOME/Arduino
+        mkdir $HOME/Arduino/libraries
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+        echo $GITHUB_WORKSPACE/bin >> $GITHUB_PATH
+
+    - name: Install BSP and Libraries
+      env:
+        BSP_URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+      run: |
+        arduino-cli config init
+        arduino-cli core update-index
+        arduino-cli core update-index --additional-urls $BSP_URL
+        arduino-cli core install rp2040:rp2040 --additional-urls $BSP_URL
+        arduino-cli lib install "Adafruit TinyUSB Library"
+        # symlink our to libraries folder
+        ln -s $GITHUB_WORKSPACE $HOME/Arduino/libraries/
+        # Library summary
+        arduino-cli lib list
+
+    #- name: Build examples
+    #  run: arduino-cli compile --warnings all --fqbn rp2040:rp2040:${{ matrix.board }}:usbstack=tinyusb examples/arduino/device_info

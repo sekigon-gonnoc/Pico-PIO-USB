@@ -25,7 +25,7 @@ static bool timer_active;
 
 static volatile bool cancel_timer_flag;
 static volatile bool start_timer_flag;
-static uint32_t int_stat;
+static __unused uint32_t int_stat;
 
 static bool sof_timer(repeating_timer_t *_rt);
 
@@ -48,7 +48,7 @@ static void start_timer(alarm_pool_t *alarm_pool) {
   timer_active = true;
 }
 
-static void stop_timer(void) {
+static __unused void stop_timer(void) {
   cancel_repeating_timer(&sof_rt);
   timer_active = false;
 }
@@ -536,8 +536,6 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 //--------------------------------------------------------------------+
 // USB Host Stack
 //--------------------------------------------------------------------+
-#ifndef PIO_USB_USE_TINYUSB
-
 static void on_device_connect(pio_port_t *pp, root_port_t *root,
                               int device_idx) {
   bool fullspeed_flag = false;
@@ -850,7 +848,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
           ->total_length_msb;
   uint16_t request_length =
       get_configuration_descriptor_request.length_lsb |
-      (get_configuration_descriptor_request.index_msb << 8);
+      (get_configuration_descriptor_request.length_msb << 8);
   res = control_in_protocol(
       device, (uint8_t *)&get_configuration_descriptor_request,
       sizeof(get_configuration_descriptor_request), rx_buffer, request_length);
@@ -1255,7 +1253,7 @@ static void __no_inline_not_in_flash_func(handle_endpoint_irq)(
 }
 
 // IRQ Handler
-void __no_inline_not_in_flash_func(pio_usb_host_irq_handler)(uint8_t root_id) {
+static void __no_inline_not_in_flash_func(__pio_usb_host_irq_handler)(uint8_t root_id) {
   root_port_t *root = PIO_USB_ROOT_PORT(root_id);
   uint32_t const ints = root->ints;
 
@@ -1286,6 +1284,7 @@ void __no_inline_not_in_flash_func(pio_usb_host_irq_handler)(uint8_t root_id) {
   root->ints &= ~ints;
 }
 
-#endif // PIO_USB_USE_TINYUSB
+// weak alias to __pio_usb_host_irq_handler
+void pio_usb_host_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_host_irq_handler")));
 
 #pragma GCC pop_options

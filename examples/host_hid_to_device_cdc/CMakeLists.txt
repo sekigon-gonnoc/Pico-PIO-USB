@@ -4,6 +4,9 @@ add_executable(${target_name})
 target_sources(${target_name} PRIVATE
  host_hid_to_device_cdc.c
  usb_descriptors.c
+ # can use 'tinyusb_pico_pio_usb' library later when pico-sdk is updated
+ ${PICO_TINYUSB_PATH}/src/portable/raspberrypi/pio_usb/dcd_pio_usb.c
+ ${PICO_TINYUSB_PATH}/src/portable/raspberrypi/pio_usb/hcd_pio_usb.c
  )
 
  # print memory usage, enable all warnings
