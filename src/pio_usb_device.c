@@ -14,6 +14,10 @@
 #include "pio_usb.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
+
+// suppress unused function usb_rx_configure_pins()
+static void __unused usb_rx_configure_pins(PIO pio, uint sm, uint pin_dp);
+
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
@@ -295,7 +299,6 @@ bool pio_usb_device_transfer(uint8_t ep_address, uint8_t *buffer,
 //--------------------------------------------------------------------+
 // USB Device Stack
 //--------------------------------------------------------------------+
-static usb_descriptor_buffers_t descriptor_buffers;
 static int8_t ep0_desc_request_type = -1;
 static uint16_t ep0_desc_request_len;
 static uint8_t ep0_desc_request_idx;
