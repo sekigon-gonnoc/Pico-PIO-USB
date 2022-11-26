@@ -512,7 +512,7 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
   }
 
   // Data
-  ep->data_id = 0; // set to DATA0
+  ep->data_id = 1; // set to DATA1
   pio_usb_bus_usb_transfer(pp, ep->buffer, 12);
 
   // Handshake
