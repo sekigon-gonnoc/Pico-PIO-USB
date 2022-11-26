@@ -198,7 +198,7 @@ typedef struct {
   uint8_t length;
   uint8_t type;
   uint8_t string[62];
-} string_descriptor_t;
+} __attribute__((aligned(2))) string_descriptor_t;
 
 typedef struct {
   uint8_t length;

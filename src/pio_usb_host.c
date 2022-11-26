@@ -746,7 +746,7 @@ static int get_string_descriptor(usb_device_t *device, uint8_t idx,
     return res;
   }
 
-  uint16_t *wchar_buffer = (uint16_t *)rx_buffer;
+  uint16_t *wchar_buffer = (uint16_t *)(uintptr_t) rx_buffer;
   for (int i = 0; i < (len - 2) / 2; i++) {
     str_buffer[i] = wchar_buffer[i + 1];
   }
@@ -1088,7 +1088,7 @@ static void __no_inline_not_in_flash_func(process_hub_event)(
       clear_hub_feature(device, port, HUB_CLR_PORT_CONNECTION);
     } else if (status.port_change & HUB_CHANGE_PORT_RESET) {
       printf("reset port %d complete\n", port);
-      int res = clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
+      res = clear_hub_feature(device, port, HUB_CLR_PORT_RESET);
       if (res == 0) {
         assign_new_device_to_port(device, port,
                                   status.port_status & HUB_STAT_PORT_LOWSPEED);
