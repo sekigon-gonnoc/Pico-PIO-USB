@@ -636,9 +636,12 @@ static int __no_inline_not_in_flash_func(control_out_protocol)(
 static int __no_inline_not_in_flash_func(control_in_protocol)(
     usb_device_t *device, uint8_t *tx_data, uint16_t tx_length,
     uint8_t *rx_buffer, uint16_t request_length) {
+
   int res = 0;
 
   control_pipe_t *pipe = &device->control_pipe;
+
+  busy_wait_us(1000);
 
   if (pipe->operation == CONTROL_NONE) {
     pipe->setup_packet.tx_address = tx_data;
