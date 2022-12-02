@@ -19,6 +19,13 @@
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
+#ifdef PIO_HOST_CALLBACKS
+extern void pio_hid_connect_host_cb(usb_device_t *device);
+#else
+void pio_hid_connect_host_cb(usb_device_t *device) {
+  (void) device;
+}
+#endif
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
 static bool timer_active;
@@ -960,7 +967,8 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
         }
         printf("\n");
         stdio_flush();
-
+        
+        pio_hid_connect_host_cb(device);
       } break;
       default:
         break;
