@@ -19,6 +19,8 @@
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
+#include "pio_config.h"
+
 #ifdef PIO_HOST_CALLBACKS
 extern void pio_hid_connect_host_cb(usb_device_t *device);
 #else
