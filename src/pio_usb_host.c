@@ -23,8 +23,12 @@
 
 #ifdef PIO_HOST_CALLBACKS
 extern void pio_hid_connect_host_cb(usb_device_t *device);
+extern void pio_disconnect_host_cb(usb_device_t *device);
 #else
 void pio_hid_connect_host_cb(usb_device_t *device) {
+  (void) device;
+}
+void pio_disconnect_host_cb(usb_device_t *device) {
   (void) device;
 }
 #endif
@@ -998,6 +1002,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
 
 static void device_disconnect(usb_device_t *device) {
   printf("Disconnect device %d\n", device->address);
+  pio_disconnect_host_cb(device);
   for (int port = 0; port < PIO_USB_HUB_PORT_CNT; port++) {
     if (device->child_devices[port] != 0) {
       device_disconnect(&pio_usb_device[device->child_devices[port]]);
