@@ -413,6 +413,7 @@ void __no_inline_not_in_flash_func(pio_usb_ll_transfer_complete)(
   } else if (flag == PIO_USB_INTS_ENDPOINT_STALLED_BITS) {
     rport->ep_stalled |= ep_mask;
   } else {
+    printf("Endpoint Error\n");
     // something wrong
   }
 

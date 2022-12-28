@@ -19,7 +19,9 @@
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
+#ifndef __TEST
 #include "pio_config.h"
+#endif
 
 #ifdef PIO_HOST_CALLBACKS
 extern void pio_hid_connect_host_cb(usb_device_t *device);
@@ -894,6 +896,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   volatile uint8_t interface = 0;
   volatile uint8_t class = 0;
   uint8_t *descriptor = configuration_descrptor_data;
+  bool run_callback = false;
   while (configuration_descrptor_length > 0) {
     switch (descriptor[1]) {
       case DESC_TYPE_INTERFACE: {
@@ -906,6 +909,7 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
             d->iprotocol, d->iface);
         interface = d->inum;
         class = d->iclass;
+        run_callback = true;
       } break;
       case DESC_TYPE_ENDPOINT: {
         const endpoint_descriptor_t *d =
@@ -913,8 +917,12 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
         printf("\t\t\tepaddr:0x%02x, attr:%d, size:%d, interval:%d\n",
                d->epaddr, d->attr, d->max_size[0] | (d->max_size[1] << 8),
                d->interval);
+        /*printf("class: ");
+        if(class == CLASS_HID || class == CLASS_HUB) { printf("%s", class == CLASS_HID ? "HID" : "HUB"); }
+        else { printf("%d", class); }
+        printf("\n");*/
 
-        if ((class == CLASS_HID || class == CLASS_HUB) &&
+        if ((class == CLASS_HID || class == CLASS_HUB || class == CLASS_XPAD) &&
             d->attr == EP_ATTR_INTERRUPT) {
           volatile endpoint_t *ep = NULL;
           for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT;
@@ -973,15 +981,24 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
         }
         printf("\n");
         stdio_flush();
-        
-        pio_hid_connect_host_cb(device);
+        run_callback = true; 
+        //pio_hid_connect_host_cb(device);
       } break;
       default:
         break;
     }
 
+
     configuration_descrptor_length -= descriptor[0];
     descriptor += descriptor[0];
+  }
+  if(run_callback) { pio_hid_connect_host_cb(device);
+    printf("vid:0x%04X, pid:0x%04X, \n", device->vid, device->pid);
+    printf("connected: %d\n", device->connected);
+    printf("MAX EP: 0x%02X\n", PIO_USB_DEV_EP_CNT);
+    for(int i = 0; i < PIO_USB_DEV_EP_CNT; i++) {
+      printf("EP ADDR: %02x\n", device->endpoint_id[i]);
+    }
   }
 
   for (int epidx = 0; epidx < PIO_USB_DEV_EP_CNT; epidx++) {
