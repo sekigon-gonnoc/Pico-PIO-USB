@@ -7,8 +7,13 @@ pico_sdk_init()
 
 # add pico-pio-usb library for examples
 set(PICO_PIO_USB_DIR "${CMAKE_CURRENT_LIST_DIR}/../")
+set(GCC_TEST_COMPILE_FLAGS "-D __TEST")
+
+message(STATUS "pio_dir: " ${PICO_PIO_USB_DIR})
 # the second argument to add_subdirectory is needed here because this isn't
 # a subdirectory, it's out of tree.
+add_definitions(${GCC_TEST_COMPILE_FLAGS})
+
 add_subdirectory(${PICO_PIO_USB_DIR} pico_pio_usb)
 
 add_subdirectory(capture_hid_report)
