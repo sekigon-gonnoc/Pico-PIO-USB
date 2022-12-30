@@ -2,7 +2,7 @@
     "configurations": [
         {
             "name": "pico",
-            "compileCommands": "${workspaceFolder}/example/build/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/examples/build/compile_commands.json"
         }
     ],
     "version": 4
