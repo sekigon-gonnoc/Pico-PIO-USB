@@ -15,9 +15,6 @@
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
 
-// suppress unused function usb_rx_configure_pins()
-static void __unused usb_rx_configure_pins(PIO pio, uint sm, uint pin_dp);
-
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
@@ -41,8 +38,8 @@ static void __no_inline_not_in_flash_func(update_ep0_crc5_lut)(uint8_t addr) {
 
 static __always_inline void restart_usb_reveiver(pio_port_t *pp) {
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
+  pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
   pio_sm_restart(pp->pio_usb_rx, pp->sm_rx);
-  pio_sm_restart(pp->pio_usb_rx, pp->sm_eop);
   pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
 }
 
@@ -108,8 +105,9 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
     uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
 
     pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+    volatile bool has_transfer = ep->has_transfer;
 
-    if (ep->has_transfer) {
+    if (has_transfer) {
       dma_channel_transfer_from_buffer_now(pp->tx_ch, ep->buffer, xact_len + 4);
     } else if (ep->stalled) {
       hand_shake_token[1] = USB_PID_STALL;
@@ -119,12 +117,12 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
       dma_channel_transfer_from_buffer_now(pp->tx_ch, hand_shake_token, 2);
     }
 
-    pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK; // clear complete flag
+    pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
     while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
       continue;
     }
 
-    if (ep->has_transfer) {
+    if (has_transfer) {
       pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
       irq_clear(pp->device_rx_irq_num);
       pio_usb_bus_start_receive(pp);
@@ -132,9 +130,8 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
       // wait for ack
       pio_usb_bus_wait_handshake(pp);
 
-      pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
-      irq_clear(pp->device_rx_irq_num);
       pio_usb_bus_start_receive(pp);
+      irq_clear(pp->device_rx_irq_num);
 
       //
       // time critical end
@@ -198,25 +195,6 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
     // SOF interrupt
   }
 
-  if (token_buf[0] == 0 && pio_usb_bus_get_line_state(rport) == PORT_PIN_SE0) {
-    // Reset detected
-    memset(pio_usb_ep_pool, 0, sizeof(pio_usb_ep_pool));
-    rport->dev_addr = 0;
-    update_ep0_crc5_lut(rport->dev_addr);
-
-    // init endpoint control in/out
-    PIO_USB_ENDPOINT(0)->size = 64;
-    PIO_USB_ENDPOINT(0)->ep_num = 0;
-    PIO_USB_ENDPOINT(0)->is_tx = false;
-
-    PIO_USB_ENDPOINT(1)->size = 64;
-    PIO_USB_ENDPOINT(1)->ep_num = 0x80;
-    PIO_USB_ENDPOINT(1)->is_tx = true;
-
-    // TODO should be reset end, this is reset start only
-    rport->ep_complete = rport->ep_stalled = rport->ep_error = 0;
-    rport->ints = PIO_USB_INTS_RESET_END_BITS;
-  }
 
   token_buf[0] = 0; // clear received token
   token_buf[1] = 0;
@@ -250,6 +228,13 @@ usb_device_t *pio_usb_device_init(const pio_usb_configuration_t *c,
   pio_calculate_clkdiv_from_float(cpu_freq / 96000000,
                                   &pp->clk_div_fs_rx.div_int,
                                   &pp->clk_div_fs_rx.div_frac);
+
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_rx, rport->pin_dp);
+  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
+
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_eop, rport->pin_dm);
+  pio_sm_set_in_pins(pp->pio_usb_rx, pp->sm_eop, rport->pin_dp);
+  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_fs_rx);
 
   descriptor_buffers = *buffers;
 
@@ -354,6 +339,35 @@ void pio_usb_device_task(void) {
     default:
       break;
   }
+
+  root_port_t *rport = PIO_USB_ROOT_PORT(0);
+  uint32_t se0_time_us =0;
+  while (pio_usb_bus_get_line_state(rport) == PORT_PIN_SE0) {
+    busy_wait_us_32(1);
+    se0_time_us++;
+
+    if (se0_time_us == 1000) {
+      memset(pio_usb_ep_pool, 0, sizeof(pio_usb_ep_pool));
+      rport->dev_addr = 0;
+      update_ep0_crc5_lut(rport->dev_addr);
+
+      // init endpoint control in/out
+      PIO_USB_ENDPOINT(0)->size = 64;
+      PIO_USB_ENDPOINT(0)->ep_num = 0;
+      PIO_USB_ENDPOINT(0)->is_tx = false;
+
+      PIO_USB_ENDPOINT(1)->size = 64;
+      PIO_USB_ENDPOINT(1)->ep_num = 0x80;
+      PIO_USB_ENDPOINT(1)->is_tx = true;
+
+      // TODO should be reset end, this is reset start only
+      rport->ep_complete = rport->ep_stalled = rport->ep_error = 0;
+      rport->ints |= PIO_USB_INTS_RESET_END_BITS;
+
+      pio_port_t *pp = PIO_USB_PIO_PORT(0);
+      restart_usb_reveiver(pp);
+    }
+  }
 }
 
 static void __no_inline_not_in_flash_func(configure_all_endpoints)(uint8_t const *desc) {
@@ -423,6 +437,9 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
       prepare_ep0_data(NULL, 0);
       res = 0;
     }
+  } else if (packet->request_type == (USB_REQ_REC_EP)) {
+      prepare_ep0_data(NULL, 0);
+      res = 0;
   }
 
   return res;

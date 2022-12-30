@@ -11,407 +11,194 @@
 #define IRQ_RX_BS_ERR 1
 #define IRQ_RX_EOP 2
 #define IRQ_RX_START 3
+#define DECODER_TRIGGER 4
 
-// --------- //
-// usb_rx_fs //
-// --------- //
+// ----------------- //
+// usb_edge_detector //
+// ----------------- //
 
-#define usb_rx_fs_wrap_target 0
-#define usb_rx_fs_wrap 20
+#define usb_edge_detector_wrap_target 3
+#define usb_edge_detector_wrap 9
 
-static const uint16_t usb_rx_fs_program_instructions[] = {
+static const uint16_t usb_edge_detector_program_instructions[] = {
+    0xc022, //  0: irq    wait 2                     
+    0x00c1, //  1: jmp    pin, 1                     
+    0xc103, //  2: irq    nowait 3               [1] 
             //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0               [7] 
-    0x2020, //  1: wait   0 pin, 0                   
-    0xe045, //  2: set    y, 5                       
-    0x00c7, //  3: jmp    pin, 7                     
-    0xe120, //  4: set    x, 0                   [1] 
-    0x4121, //  5: in     x, 1                   [1] 
-    0x010b, //  6: jmp    11                     [1] 
-    0xe221, //  7: set    x, 1                   [2] 
-    0x4021, //  8: in     x, 1                       
-    0x0283, //  9: jmp    y--, 3                 [2] 
-    0x06d4, // 10: jmp    pin, 20                [6] 
-    0xe045, // 11: set    y, 5                       
-    0x00d1, // 12: jmp    pin, 17                    
-    0xe321, // 13: set    x, 1                   [3] 
-    0x4121, // 14: in     x, 1                   [1] 
-    0x008c, // 15: jmp    y--, 12                    
-    0x0602, // 16: jmp    2                      [6] 
-    0xe320, // 17: set    x, 0                   [3] 
-    0x4021, // 18: in     x, 1                       
-    0x0002, // 19: jmp    2                          
-    0xc021, // 20: irq    wait 1                     
+    0xc104, //  3: irq    nowait 4               [1] 
+    0x00cc, //  4: jmp    pin, 12                    
+    0x00cc, //  5: jmp    pin, 12                    
+    0x00cc, //  6: jmp    pin, 12                    
+    0x00cc, //  7: jmp    pin, 12                    
+    0x00cc, //  8: jmp    pin, 12                    
+    0x00cc, //  9: jmp    pin, 12                    
             //     .wrap
+    0xa226, // 10: mov    x, isr                 [2] 
+    0x0040, // 11: jmp    x--, 0                     
+    0xa0c3, // 12: mov    isr, null                  
+    0x4001, // 13: in     pins, 1                    
+    0xc004, // 14: irq    nowait 4                   
+    0x00ca, // 15: jmp    pin, 10                    
+    0x0005, // 16: jmp    5                          
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_fs_program = {
-    .instructions = usb_rx_fs_program_instructions,
-    .length = 21,
+static const struct pio_program usb_edge_detector_program = {
+    .instructions = usb_edge_detector_program_instructions,
+    .length = 17,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_fs_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_edge_detector_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_fs_wrap_target, offset + usb_rx_fs_wrap);
+    sm_config_set_wrap(&c, offset + usb_edge_detector_wrap_target, offset + usb_edge_detector_wrap);
     return c;
 }
 #endif
 
-// --------------- //
-// usb_rx_fs_debug //
-// --------------- //
+// ----------------------- //
+// usb_edge_detector_debug //
+// ----------------------- //
 
-#define usb_rx_fs_debug_wrap_target 0
-#define usb_rx_fs_debug_wrap 20
+#define usb_edge_detector_debug_wrap_target 3
+#define usb_edge_detector_debug_wrap 9
 
-static const uint16_t usb_rx_fs_debug_program_instructions[] = {
+static const uint16_t usb_edge_detector_debug_program_instructions[] = {
+    0xc022, //  0: irq    wait 2          side 0     
+    0x10c1, //  1: jmp    pin, 1          side 1     
+    0xc103, //  2: irq    nowait 3        side 0 [1] 
             //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0        side 0 [7] 
-    0x3020, //  1: wait   0 pin, 0        side 1     
-    0xf045, //  2: set    y, 5            side 1     
-    0x10c7, //  3: jmp    pin, 7          side 1     
-    0xe120, //  4: set    x, 0            side 0 [1] 
-    0x5121, //  5: in     x, 1            side 1 [1] 
-    0x110b, //  6: jmp    11              side 1 [1] 
-    0xe221, //  7: set    x, 1            side 0 [2] 
-    0x5021, //  8: in     x, 1            side 1     
-    0x1283, //  9: jmp    y--, 3          side 1 [2] 
-    0x16d4, // 10: jmp    pin, 20         side 1 [6] 
-    0xf045, // 11: set    y, 5            side 1     
-    0x10d1, // 12: jmp    pin, 17         side 1     
-    0xe321, // 13: set    x, 1            side 0 [3] 
-    0x5121, // 14: in     x, 1            side 1 [1] 
-    0x108c, // 15: jmp    y--, 12         side 1     
-    0x1602, // 16: jmp    2               side 1 [6] 
-    0xe320, // 17: set    x, 0            side 0 [3] 
-    0x5021, // 18: in     x, 1            side 1     
-    0x1002, // 19: jmp    2               side 1     
-    0xc021, // 20: irq    wait 1          side 0     
+    0xc104, //  3: irq    nowait 4        side 0 [1] 
+    0x10cc, //  4: jmp    pin, 12         side 1     
+    0x10cc, //  5: jmp    pin, 12         side 1     
+    0x10cc, //  6: jmp    pin, 12         side 1     
+    0x10cc, //  7: jmp    pin, 12         side 1     
+    0x10cc, //  8: jmp    pin, 12         side 1     
+    0x10cc, //  9: jmp    pin, 12         side 1     
             //     .wrap
+    0xb226, // 10: mov    x, isr          side 1 [2] 
+    0x1040, // 11: jmp    x--, 0          side 1     
+    0xb0c3, // 12: mov    isr, null       side 1     
+    0x4001, // 13: in     pins, 1         side 0     
+    0xc004, // 14: irq    nowait 4        side 0     
+    0x00ca, // 15: jmp    pin, 10         side 0     
+    0x1005, // 16: jmp    5               side 1     
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_fs_debug_program = {
-    .instructions = usb_rx_fs_debug_program_instructions,
-    .length = 21,
+static const struct pio_program usb_edge_detector_debug_program = {
+    .instructions = usb_edge_detector_debug_program_instructions,
+    .length = 17,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_fs_debug_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_fs_debug_wrap_target, offset + usb_rx_fs_debug_wrap);
+    sm_config_set_wrap(&c, offset + usb_edge_detector_debug_wrap_target, offset + usb_edge_detector_debug_wrap);
     sm_config_set_sideset(&c, 1, false, false);
     return c;
 }
 #endif
 
-// --------- //
-// usb_rx_ls //
-// --------- //
+// ---------------- //
+// usb_nrzi_decoder //
+// ---------------- //
 
-#define usb_rx_ls_wrap_target 0
-#define usb_rx_ls_wrap 20
+#define usb_nrzi_decoder_wrap_target 0
+#define usb_nrzi_decoder_wrap 14
 
-static const uint16_t usb_rx_ls_program_instructions[] = {
+static const uint16_t usb_nrzi_decoder_program_instructions[] = {
             //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0               [7] 
-    0x2020, //  1: wait   0 pin, 0                   
-    0xe045, //  2: set    y, 5                       
-    0x00c7, //  3: jmp    pin, 7                     
-    0xe120, //  4: set    x, 0                   [1] 
-    0x4121, //  5: in     x, 1                   [1] 
-    0x010b, //  6: jmp    11                     [1] 
-    0xe221, //  7: set    x, 1                   [2] 
-    0x4021, //  8: in     x, 1                       
-    0x0283, //  9: jmp    y--, 3                 [2] 
-    0x06d4, // 10: jmp    pin, 20                [6] 
-    0xe045, // 11: set    y, 5                       
-    0x00d1, // 12: jmp    pin, 17                    
-    0xe321, // 13: set    x, 1                   [3] 
-    0x4121, // 14: in     x, 1                   [1] 
-    0x008c, // 15: jmp    y--, 12                    
-    0x0602, // 16: jmp    2                      [6] 
-    0xe320, // 17: set    x, 0                   [3] 
-    0x4021, // 18: in     x, 1                       
-    0x0002, // 19: jmp    2                          
-    0xc021, // 20: irq    wait 1                     
+    0xe046, //  0: set    y, 6                       
+    0x20c4, //  1: wait   1 irq, 4                   
+    0x00c9, //  2: jmp    pin, 9                     
+    0x006e, //  3: jmp    !y, 14                     
+    0x0027, //  4: jmp    !x, 7                      
+    0x4061, //  5: in     null, 1                    
+    0x000e, //  6: jmp    14                         
+    0x40e1, //  7: in     osr, 1                     
+    0x0081, //  8: jmp    y--, 1                     
+    0x006e, //  9: jmp    !y, 14                     
+    0x002d, // 10: jmp    !x, 13                     
+    0x4021, // 11: in     x, 1                       
+    0x0081, // 12: jmp    y--, 1                     
+    0x4061, // 13: in     null, 1                    
+    0xa029, // 14: mov    x, !x                      
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_ls_program = {
-    .instructions = usb_rx_ls_program_instructions,
-    .length = 21,
+static const struct pio_program usb_nrzi_decoder_program = {
+    .instructions = usb_nrzi_decoder_program_instructions,
+    .length = 15,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_ls_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_ls_wrap_target, offset + usb_rx_ls_wrap);
+    sm_config_set_wrap(&c, offset + usb_nrzi_decoder_wrap_target, offset + usb_nrzi_decoder_wrap);
     return c;
 }
 #endif
 
-// --------------- //
-// usb_rx_ls_debug //
-// --------------- //
+// ---------------------- //
+// usb_nrzi_decoder_debug //
+// ---------------------- //
 
-#define usb_rx_ls_debug_wrap_target 0
-#define usb_rx_ls_debug_wrap 20
+#define usb_nrzi_decoder_debug_wrap_target 0
+#define usb_nrzi_decoder_debug_wrap 14
 
-static const uint16_t usb_rx_ls_debug_program_instructions[] = {
+static const uint16_t usb_nrzi_decoder_debug_program_instructions[] = {
             //     .wrap_target
-    0x27a0, //  0: wait   1 pin, 0        side 0 [7] 
-    0x2020, //  1: wait   0 pin, 0        side 0     
-    0xf045, //  2: set    y, 5            side 1     
-    0x10c7, //  3: jmp    pin, 7          side 1     
-    0xe120, //  4: set    x, 0            side 0 [1] 
-    0x5121, //  5: in     x, 1            side 1 [1] 
-    0x110b, //  6: jmp    11              side 1 [1] 
-    0xe221, //  7: set    x, 1            side 0 [2] 
-    0x5021, //  8: in     x, 1            side 1     
-    0x1283, //  9: jmp    y--, 3          side 1 [2] 
-    0x16d4, // 10: jmp    pin, 20         side 1 [6] 
-    0xf045, // 11: set    y, 5            side 1     
-    0x10d1, // 12: jmp    pin, 17         side 1     
-    0xe321, // 13: set    x, 1            side 0 [3] 
-    0x5121, // 14: in     x, 1            side 1 [1] 
-    0x108c, // 15: jmp    y--, 12         side 1     
-    0x1602, // 16: jmp    2               side 1 [6] 
-    0xe320, // 17: set    x, 0            side 0 [3] 
-    0x5021, // 18: in     x, 1            side 1     
-    0x1002, // 19: jmp    2               side 1     
-    0xc021, // 20: irq    wait 1          side 0     
+    0xe046, //  0: set    y, 6                       
+    0x20c4, //  1: wait   1 irq, 4                   
+    0x00c9, //  2: jmp    pin, 9                     
+    0x106e, //  3: jmp    !y, 14          side 0     
+    0x1027, //  4: jmp    !x, 7           side 0     
+    0x4061, //  5: in     null, 1                    
+    0x000e, //  6: jmp    14                         
+    0x40e1, //  7: in     osr, 1                     
+    0x0081, //  8: jmp    y--, 1                     
+    0x186e, //  9: jmp    !y, 14          side 1     
+    0x182d, // 10: jmp    !x, 13          side 1     
+    0x4021, // 11: in     x, 1                       
+    0x0081, // 12: jmp    y--, 1                     
+    0x4061, // 13: in     null, 1                    
+    0xa029, // 14: mov    x, !x                      
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_rx_ls_debug_program = {
-    .instructions = usb_rx_ls_debug_program_instructions,
-    .length = 21,
+static const struct pio_program usb_nrzi_decoder_debug_program = {
+    .instructions = usb_nrzi_decoder_debug_program_instructions,
+    .length = 15,
     .origin = -1,
 };
 
-static inline pio_sm_config usb_rx_ls_debug_program_get_default_config(uint offset) {
+static inline pio_sm_config usb_nrzi_decoder_debug_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + usb_rx_ls_debug_wrap_target, offset + usb_rx_ls_debug_wrap);
-    sm_config_set_sideset(&c, 1, false, false);
-    return c;
-}
-#endif
-
-// ------------- //
-// eop_detect_fs //
-// ------------- //
-
-#define eop_detect_fs_wrap_target 0
-#define eop_detect_fs_wrap 9
-
-static const uint16_t eop_detect_fs_program_instructions[] = {
-            //     .wrap_target
-    0x20a0, //  0: wait   1 pin, 0                   
-    0x2020, //  1: wait   0 pin, 0                   
-    0xc003, //  2: irq    nowait 3                   
-    0xe041, //  3: set    y, 1                       
-    0xa0c3, //  4: mov    isr, null                  
-    0x4002, //  5: in     pins, 2                    
-    0xa026, //  6: mov    x, isr                     
-    0x0043, //  7: jmp    x--, 3                     
-    0x0085, //  8: jmp    y--, 5                     
-    0xc022, //  9: irq    wait 2                     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_fs_program = {
-    .instructions = eop_detect_fs_program_instructions,
-    .length = 10,
-    .origin = -1,
-};
-
-static inline pio_sm_config eop_detect_fs_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_fs_wrap_target, offset + eop_detect_fs_wrap);
-    return c;
-}
-#endif
-
-// ------------------- //
-// eop_detect_fs_debug //
-// ------------------- //
-
-#define eop_detect_fs_debug_wrap_target 0
-#define eop_detect_fs_debug_wrap 9
-
-static const uint16_t eop_detect_fs_debug_program_instructions[] = {
-            //     .wrap_target
-    0x30a0, //  0: wait   1 pin, 0        side 1     
-    0x3020, //  1: wait   0 pin, 0        side 1     
-    0xc003, //  2: irq    nowait 3        side 0     
-    0xe041, //  3: set    y, 1            side 0     
-    0xa0c3, //  4: mov    isr, null       side 0     
-    0x4002, //  5: in     pins, 2         side 0     
-    0xa026, //  6: mov    x, isr          side 0     
-    0x0043, //  7: jmp    x--, 3          side 0     
-    0x0085, //  8: jmp    y--, 5          side 0     
-    0xd022, //  9: irq    wait 2          side 1     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_fs_debug_program = {
-    .instructions = eop_detect_fs_debug_program_instructions,
-    .length = 10,
-    .origin = -1,
-};
-
-static inline pio_sm_config eop_detect_fs_debug_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_fs_debug_wrap_target, offset + eop_detect_fs_debug_wrap);
-    sm_config_set_sideset(&c, 1, false, false);
-    return c;
-}
-#endif
-
-// ------------- //
-// eop_detect_ls //
-// ------------- //
-
-#define eop_detect_ls_wrap_target 0
-#define eop_detect_ls_wrap 9
-
-static const uint16_t eop_detect_ls_program_instructions[] = {
-            //     .wrap_target
-    0x20a1, //  0: wait   1 pin, 1                   
-    0x2021, //  1: wait   0 pin, 1                   
-    0xc003, //  2: irq    nowait 3                   
-    0xe041, //  3: set    y, 1                       
-    0xa0c3, //  4: mov    isr, null                  
-    0x4002, //  5: in     pins, 2                    
-    0xa026, //  6: mov    x, isr                     
-    0x0043, //  7: jmp    x--, 3                     
-    0x0085, //  8: jmp    y--, 5                     
-    0xc022, //  9: irq    wait 2                     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_ls_program = {
-    .instructions = eop_detect_ls_program_instructions,
-    .length = 10,
-    .origin = -1,
-};
-
-static inline pio_sm_config eop_detect_ls_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_ls_wrap_target, offset + eop_detect_ls_wrap);
-    return c;
-}
-#endif
-
-// ------------------- //
-// eop_detect_ls_debug //
-// ------------------- //
-
-#define eop_detect_ls_debug_wrap_target 0
-#define eop_detect_ls_debug_wrap 9
-
-static const uint16_t eop_detect_ls_debug_program_instructions[] = {
-            //     .wrap_target
-    0x30a1, //  0: wait   1 pin, 1        side 1     
-    0x3021, //  1: wait   0 pin, 1        side 1     
-    0xc003, //  2: irq    nowait 3        side 0     
-    0xe041, //  3: set    y, 1            side 0     
-    0xa0c3, //  4: mov    isr, null       side 0     
-    0x4002, //  5: in     pins, 2         side 0     
-    0xa026, //  6: mov    x, isr          side 0     
-    0x0043, //  7: jmp    x--, 3          side 0     
-    0x0085, //  8: jmp    y--, 5          side 0     
-    0xd022, //  9: irq    wait 2          side 1     
-            //     .wrap
-};
-
-#if !PICO_NO_HARDWARE
-static const struct pio_program eop_detect_ls_debug_program = {
-    .instructions = eop_detect_ls_debug_program_instructions,
-    .length = 10,
-    .origin = -1,
-};
-
-static inline pio_sm_config eop_detect_ls_debug_program_get_default_config(uint offset) {
-    pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + eop_detect_ls_debug_wrap_target, offset + eop_detect_ls_debug_wrap);
-    sm_config_set_sideset(&c, 1, false, false);
+    sm_config_set_wrap(&c, offset + usb_nrzi_decoder_debug_wrap_target, offset + usb_nrzi_decoder_debug_wrap);
+    sm_config_set_sideset(&c, 2, true, false);
     return c;
 }
 
 #include "hardware/clocks.h"
-  static void __no_inline_not_in_flash_func(usb_rx_configure_pins)(PIO pio, uint sm, uint pin_dp) {
-    pio_sm_set_in_pins(pio, sm, pin_dp);
-    pio->sm[sm].execctrl = (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
-                (pin_dp << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
-  }
+static __always_inline void pio_sm_set_jmp_pin(PIO pio, uint sm, uint jmp_pin) {
+  pio->sm[sm].execctrl =
+      (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
+      (jmp_pin << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
+}
 static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
-    gpio_pull_down(pin_dp);
-    gpio_pull_down(pin_dp + 1);  // dm
-    pio_sm_config c;
-    if (pin_debug < 0) {
-      c = usb_rx_fs_program_get_default_config(offset);
-    } else {
-      c = usb_rx_fs_debug_program_get_default_config(offset);
-      pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
-      pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
-      pio_gpio_init(pio, pin_debug);
-      sm_config_set_sideset_pins(&c, pin_debug);
-    }
-    sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-    sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
-    // Shift to right, autopull enabled, 8bit
-    sm_config_set_in_shift(&c, true, true, 8);
-    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
-    // Run at 96Mhz
-    // system clock should be multiple of 12MHz
-    float div = (float)clock_get_hz(clk_sys) / (96000000);
-    sm_config_set_clkdiv(&c, div);
-    pio_sm_init(pio, sm, offset, &c);
-    pio_sm_set_enabled(pio, sm, false);
-}
-static inline void usb_rx_ls_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
-    gpio_pull_down(pin_dp);
-    gpio_pull_down(pin_dp + 1);  // dm
-    pio_sm_config c;
-    if (pin_debug < 0) {
-      c = usb_rx_ls_program_get_default_config(offset);
-    } else {
-      c = usb_rx_ls_debug_program_get_default_config(offset);
-      pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
-      pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
-      pio_gpio_init(pio, pin_debug);
-      sm_config_set_sideset_pins(&c, pin_debug);
-    }
-    sm_config_set_in_pins(&c, pin_dp + 1);  // for WAIT, IN
-    sm_config_set_jmp_pin(&c, pin_dp + 1);  // for JMP
-    // Shift to right, autopull enabled, 8bit
-    sm_config_set_in_shift(&c, true, true, 8);
-    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
-    // Run at 12Mhz
-    // system clock should be multiple of 12MHz
-    float div = (float)clock_get_hz(clk_sys) / (12000000);
-    sm_config_set_clkdiv(&c, div);
-    pio_sm_init(pio, sm, offset, &c);
-    pio_sm_set_enabled(pio, sm, false);
-}
-static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
-                                           uint pin_dp, bool is_fs, int pin_debug) {
+  pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
+  gpio_pull_down(pin_dp);
+  gpio_pull_down(pin_dp + 1);  // dm
+  gpio_set_inover(pin_dp, GPIO_OVERRIDE_INVERT);
+  gpio_set_inover(pin_dp + 1, GPIO_OVERRIDE_INVERT);
   pio_sm_config c;
   if (pin_debug < 0) {
-    c = eop_detect_fs_program_get_default_config(offset);
+    c = usb_nrzi_decoder_program_get_default_config(offset);
   } else {
-    c = eop_detect_fs_debug_program_get_default_config(offset);
+    c = usb_nrzi_decoder_debug_program_get_default_config(offset);
     pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
     pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
     pio_gpio_init(pio, pin_debug);
@@ -419,6 +206,27 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
   }
   sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
   sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
+  // Shift to right, autopull enabled, 8bit
+  sm_config_set_in_shift(&c, true, true, 8);
+  sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+  pio_sm_init(pio, sm, offset, &c);
+  pio_sm_exec(pio, sm, pio_encode_mov_not(pio_osr, pio_null));
+  pio_sm_set_enabled(pio, sm, false);
+}
+static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
+                                           uint pin_dp, bool is_fs, int pin_debug) {
+  pio_sm_config c;
+  if (pin_debug < 0) {
+    c = usb_edge_detector_program_get_default_config(offset);
+  } else {
+    c = usb_edge_detector_debug_program_get_default_config(offset);
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
+    pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
+    pio_gpio_init(pio, pin_debug);
+    sm_config_set_sideset_pins(&c, pin_debug);
+  }
+  sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
+  sm_config_set_jmp_pin(&c, pin_dp + 1);  // for JMP
   sm_config_set_in_shift(&c, false, false, 8);
   float div;
   if (is_fs) {
@@ -427,24 +235,7 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
     div = (float)clock_get_hz(clk_sys) / (12000000);
   }
   sm_config_set_clkdiv(&c, div);
-  pio_sm_init(pio, sm, offset, &c);
-  pio_sm_set_enabled(pio, sm, true);
-}
-static inline void eop_detect_ls_program_init(PIO pio, uint sm, uint offset,
-                                           uint pin_dp, int pin_debug) {
-  pio_sm_config c;
-  if (pin_debug < 0) {
-    c = eop_detect_ls_program_get_default_config(offset);
-  } else {
-    c = eop_detect_ls_debug_program_get_default_config(offset);
-  }
-  sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-  sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
-  sm_config_set_in_shift(&c, false, false, 8);
-  float div;
-  div = (float)clock_get_hz(clk_sys) / (12000000);
-  sm_config_set_clkdiv(&c, div);
-  pio_sm_init(pio, sm, offset, &c);
+  pio_sm_init(pio, sm, offset + 1, &c);
   pio_sm_set_enabled(pio, sm, true);
 }
 
