@@ -408,11 +408,12 @@ bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
     return false;
   }
 
-  // control endpoint switch direction when switch stage
-  if (ep->ep_num != ep_address) {
+  // Control endpoint, address may switch between 0x00 <-> 0x80
+  // therefore we need to update ep_num and is_tx
+  if ((ep_address & 0x7f) == 0) {
     ep->ep_num = ep_address;
-    ep->data_id = 1; // data and status always start with DATA1
     ep->is_tx = (ep_address == 0) ? true : false;
+    ep->data_id = 1; // data and status always start with DATA1
   }
 
   return pio_usb_ll_transfer_start(ep, buffer, buflen);
