@@ -128,19 +128,14 @@ static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
   override_pio_program(pp->pio_usb_tx, &usb_tx_fs_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_fs_program,
-                          &usb_rx_fs_debug_program, pp->offset_rx,
-                          pp->debug_pin_rx);
-  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_fs_rx);
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
+  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_fs_program,
-                          &eop_detect_fs_debug_program, pp->offset_eop,
-                          pp->debug_pin_eop);
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_eop, port->pin_dm);
+  pio_sm_set_in_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_fs_rx);
 
   usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
 }
 
 static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
@@ -148,19 +143,14 @@ static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
   override_pio_program(pp->pio_usb_tx, &usb_tx_ls_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &usb_rx_ls_program,
-                          &usb_rx_ls_debug_program, pp->offset_rx,
-                          pp->debug_pin_rx);
-  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_ls_rx);
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_rx, port->pin_dm);
+  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
 
-  override_pio_rx_program(pp->pio_usb_rx, &eop_detect_ls_program,
-                          &eop_detect_ls_debug_program, pp->offset_eop,
-                          pp->debug_pin_eop);
+  pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+  pio_sm_set_in_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dm);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
 
   usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
-  usb_rx_configure_pins(pp->pio_usb_rx, pp->sm_rx, port->pin_dm);
 }
 
 static void __no_inline_not_in_flash_func(configure_root_port)(
@@ -178,7 +168,7 @@ static void __no_inline_not_in_flash_func(restore_fs_bus)(const pio_port_t *pp) 
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
-  SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_rx, pp->clk_div_fs_rx);
+  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);

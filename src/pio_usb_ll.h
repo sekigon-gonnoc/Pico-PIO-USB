@@ -58,6 +58,7 @@ typedef struct {
   uint sm_eop;
   uint offset_eop;
   uint rx_reset_instr;
+  uint rx_reset_instr2;
   uint device_rx_irq_num;
 
   int8_t debug_pin_rx;
@@ -102,11 +103,14 @@ extern pio_port_t pio_port[1];
 #define IRQ_TX_COMP_MASK (1 << usb_tx_fs_IRQ_COMP)
 #define IRQ_TX_ALL_MASK (IRQ_TX_EOP_MASK | IRQ_TX_COMP_MASK)
 #define IRQ_RX_COMP_MASK (1 << IRQ_RX_EOP)
-#define IRQ_RX_ALL_MASK                                                        \
-  ((1 << IRQ_RX_EOP) | (1 << IRQ_RX_BS_ERR) | (1 << IRQ_RX_START))
+#define IRQ_RX_ALL_MASK                                             \
+  ((1 << IRQ_RX_EOP) | (1 << IRQ_RX_BS_ERR) | (1 << IRQ_RX_START) | \
+   (1 << DECODER_TRIGGER))
 
 #define SM_SET_CLKDIV(pio, sm, div)                                            \
   pio_sm_set_clkdiv_int_frac(pio, sm, div.div_int, div.div_frac)
+#define SM_SET_CLKDIV_MAXSPEED(pio, sm)                                        \
+  pio_sm_set_clkdiv_int_frac(pio, sm, 1, 0)
 
 void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
                       root_port_t *root);
@@ -124,8 +128,8 @@ void pio_usb_bus_send_token(const pio_port_t *pp, uint8_t token, uint8_t addr,
 
 static __always_inline port_pin_status_t
 pio_usb_bus_get_line_state(root_port_t *root) {
-  uint8_t dp = gpio_get(root->pin_dp) ? 1 : 0;
-  uint8_t dm = gpio_get(root->pin_dm) ? 1 : 0;
+  uint8_t dp = gpio_get(root->pin_dp) ? 0 : 1;
+  uint8_t dm = gpio_get(root->pin_dm) ? 0 : 1;
 
   return (dm << 1) | dp;
 }
