@@ -15,6 +15,7 @@ void core1_main() {
 
   // To run USB SOF interrupt in core1, create alarm pool in core1.
   static pio_usb_configuration_t config = PIO_USB_DEFAULT_CONFIG;
+  config.pin_dp = 2;
   config.alarm_pool = (void*)alarm_pool_create(2, 1);
   usb_device = pio_usb_host_init(&config);
 
