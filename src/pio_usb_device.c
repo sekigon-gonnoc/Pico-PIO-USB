@@ -169,7 +169,7 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
 
     if (ep->has_transfer) {
       if (res >= 0) {
-        memcpy(ep->app_buf, pp->usb_rx_buffer, res);
+        memcpy(ep->app_buf, pp->usb_rx_buffer + 2, res);
         pio_usb_ll_transfer_continue(ep, res);
       }
     }
