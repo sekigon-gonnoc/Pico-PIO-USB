@@ -265,6 +265,10 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
+
+  pio_sm_claim(pp->pio_usb_tx, pp->sm_tx);
+  pio_sm_claim(pp->pio_usb_rx, pp->sm_rx);
+  pio_sm_claim(pp->pio_usb_rx, pp->sm_eop);
 }
 
 static void port_pin_drive_setting(const root_port_t *port) {
@@ -279,6 +283,7 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
   memset(root, 0, sizeof(root_port_t));
 
   pp->pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
+  dma_claim_mask(1<<c->tx_ch);
   configure_tx_channel(c->tx_ch, pp->pio_usb_tx, c->sm_tx);
 
   apply_config(pp, c, root);
