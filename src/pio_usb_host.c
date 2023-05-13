@@ -443,17 +443,17 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
       memcpy(ep->app_buf, &pp->usb_rx_buffer[2], receive_len);
       pio_usb_ll_transfer_continue(ep, receive_len);
       ep->error_count = 0;
+    } else if (receive_pid == USB_PID_NAK) {
+      // NAK try again next frame
+      res             = -4;  // nak received
+      ep->error_count = 0;
+    } else if (receive_pid == USB_PID_STALL) {
+      ep->error_count = 0;
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
     } else {
       // DATA0/1 mismatched, 0 for re-try next frame
-      res = -3; // invalid pid
+      res = -3;  // invalid pid
     }
-  } else if (receive_pid == USB_PID_NAK) {
-    // NAK try again next frame
-    res = -4; // nak received
-    ep->error_count = 0;
-  } else if (receive_pid == USB_PID_STALL) {
-    ep->error_count = 0;
-    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
     res = -1; // no packet received
     if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
