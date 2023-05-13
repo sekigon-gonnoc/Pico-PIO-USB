@@ -63,6 +63,11 @@ typedef struct {
 
   int8_t debug_pin_rx;
   int8_t debug_pin_eop;
+  uint8_t error_count;
+  uint8_t extra_error_retry_count;
+  uint32_t total_error_count;
+  uint32_t total_fatal_error_count;
+  uint32_t total_transaction_count;
 
   pio_clk_div_t clk_div_fs_tx;
   pio_clk_div_t clk_div_fs_rx;

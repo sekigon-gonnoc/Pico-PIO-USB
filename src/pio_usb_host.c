@@ -246,13 +246,14 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
           if (ep->ep_num == 0 && ep->data_id == USB_PID_SETUP) {
             usb_setup_transaction(pp, ep);
           } else {
+            int transaction_result = 0;
             if (ep->ep_num & EP_IN) {
-              usb_in_transaction(pp, ep);
+              transaction_result = usb_in_transaction(pp, ep);
             } else {
-              usb_out_transaction(pp, ep);
+              transaction_result = usb_out_transaction(pp, ep);
             }
 
-            if (is_periodic) {
+            if (is_periodic && transaction_result == 0) {
               ep->interval_counter = ep->interval - 1;
             }
           }
@@ -417,31 +418,53 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
                                                              endpoint_t *ep) {
   int res = 0;
   uint8_t expect_pid = (ep->data_id == 1) ? USB_PID_DATA1 : USB_PID_DATA0;
+  int     retry      = ep->attr == EP_ATTR_ISOCHRONOUS
+                           ? 0
+                           : 3;  // Host can retry transaction three times except for
+                                 // isochronous EP(USB1.1 spec. 10.2.6)
+  int receive_len = 0;
+  uint8_t receive_pid = 0;
+  do {
+    pp->usb_rx_buffer[1] = 0;
+    pio_usb_bus_prepare_receive(pp);
+    pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
+    pio_usb_bus_start_receive(pp);
 
-  pio_usb_bus_prepare_receive(pp);
-  pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
-  pio_usb_bus_start_receive(pp);
-
-  int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
-  uint8_t const receive_pid = pp->usb_rx_buffer[1];
+    receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
+    receive_pid = pp->usb_rx_buffer[1];
+    pp->total_transaction_count++;
+  } while ((receive_len < 0 ||
+            (receive_pid != expect_pid && receive_pid != USB_PID_NAK &&
+             receive_pid != USB_PID_STALL)) &&
+           --retry > 0);
 
   if (receive_len >= 0) {
     if (receive_pid == expect_pid) {
       memcpy(ep->app_buf, &pp->usb_rx_buffer[2], receive_len);
       pio_usb_ll_transfer_continue(ep, receive_len);
+      ep->error_count = 0;
     } else {
       // DATA0/1 mismatched, 0 for re-try next frame
+      res = -3; // invalid pid
     }
   } else if (receive_pid == USB_PID_NAK) {
     // NAK try again next frame
+    res = -4; // nak received
+    ep->error_count = 0;
   } else if (receive_pid == USB_PID_STALL) {
+    ep->error_count = 0;
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
-    res = -1;
+    res = -1; // no packet received
     if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
-      res = -2;
+      res = -2; // invalid CRC
     }
-    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    pp->total_error_count++;
+    if (++ep->error_count > pp->extra_error_retry_count) {
+      pp->total_fatal_error_count++;
+      ep->error_count = 0;
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    }
   }
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
@@ -453,31 +476,41 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
 
 static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
                                                               endpoint_t *ep) {
-  int res = 0;
-
+  int res   = 0;
+  uint8_t  receive_token;
+  int retry = ep->attr == EP_ATTR_ISOCHRONOUS
+                  ? 0
+                  : 3;  // Host can retry transaction three times except for
+                        // isochronous EP(USB1.1 spec. 10.2.6)
   uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
 
-  pio_usb_bus_prepare_receive(pp);
-  pio_usb_bus_send_token(pp, USB_PID_OUT, ep->dev_addr, ep->ep_num);
-  // ensure previous tx complete
-  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
-    continue;
-  }
+  do {
+    pio_usb_bus_prepare_receive(pp);
+    pio_usb_bus_send_token(pp, USB_PID_OUT, ep->dev_addr, ep->ep_num);
+    // ensure previous tx complete
+    while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+      continue;
+    }
 
-  pio_usb_bus_usb_transfer(pp, ep->buffer, xact_len + 4);
-  pio_usb_bus_start_receive(pp);
+    pio_usb_bus_usb_transfer(pp, ep->buffer, xact_len + 4);
+    pio_usb_bus_start_receive(pp);
 
-  pio_usb_bus_wait_handshake(pp);
-
-  uint8_t const receive_token = pp->usb_rx_buffer[1];
+    pio_usb_bus_wait_handshake(pp);
+    receive_token = pp->usb_rx_buffer[1];
+    pp->total_transaction_count++;
+  } while ((receive_token != USB_PID_ACK && receive_token != USB_PID_NAK &&
+            receive_token != USB_PID_STALL) &&
+           --retry > 0);
 
   if (receive_token == USB_PID_ACK) {
     pio_usb_ll_transfer_continue(ep, xact_len);
   } else if (receive_token == USB_PID_NAK) {
     // NAK try again next frame
+    res = -1;
   } else if (receive_token == USB_PID_STALL) {
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
+    pp->total_error_count++;
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
   }
 

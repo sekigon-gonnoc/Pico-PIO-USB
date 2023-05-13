@@ -188,6 +188,11 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
         // timing critical end
         return idx - 4;
       }
+
+      if (pp->usb_rx_buffer[1] == USB_PID_NAK ||
+          pp->usb_rx_buffer[1] == USB_PID_STALL) {
+        return 0;
+      }
     } else {
       // just discard received data since we NAK/STALL anyway
       while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
@@ -265,6 +270,8 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
+
+  pp->extra_error_retry_count = c->extra_error_retry_count;
 
   pio_sm_claim(pp->pio_usb_tx, pp->sm_tx);
   pio_sm_claim(pp->pio_usb_rx, pp->sm_rx);

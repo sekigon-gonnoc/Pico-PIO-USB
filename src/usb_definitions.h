@@ -73,6 +73,7 @@ typedef struct {
   uint8_t *app_buf;
   uint16_t total_len;
   uint16_t actual_len;
+  uint8_t error_count;
 } endpoint_t;
 
 typedef enum {
