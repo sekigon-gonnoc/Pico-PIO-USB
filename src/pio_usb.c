@@ -353,7 +353,12 @@ void __no_inline_not_in_flash_func(pio_usb_ll_configure_endpoint)(
   ep->size = d->max_size[0] | (d->max_size[1] << 8);
   ep->ep_num = d->epaddr;
   ep->attr = d->attr;
-  ep->interval = d->interval;
+  // align interval to 2^n (=1...32)
+  for (int bit_idx = 0; bit_idx < 6; bit_idx++) {
+    if ((1 << bit_idx) <= d->interval) {
+      ep->interval = (1 << bit_idx);
+    }
+  }
   ep->interval_counter = 0;
   ep->data_id = 0;
 }
