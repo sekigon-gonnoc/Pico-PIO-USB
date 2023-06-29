@@ -21,7 +21,7 @@
 
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
-static uint16_t sof_count = 0;
+static uint32_t sof_count = 0;
 static bool timer_active;
 
 static volatile bool cancel_timer_flag;
@@ -288,10 +288,12 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
     }
   }
 
+  sof_count++;
+
   // SOF counter is 11-bit
-  sof_count = (sof_count + 1) & 0x7ff;
-  sof_packet[2] = sof_count & 0xff;
-  sof_packet[3] = (calc_usb_crc5(sof_count) << 3) | (sof_count >> 8);
+  uint16_t const sof_count_11b = sof_count & 0x7ff;
+  sof_packet[2] = sof_count_11b & 0xff;
+  sof_packet[3] = (calc_usb_crc5(sof_count_11b) << 3) | (sof_count_11b >> 8);
 
   return true;
 }
@@ -300,7 +302,7 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
 // Host Controller functions
 //--------------------------------------------------------------------+
 
-uint16_t pio_usb_host_get_frame_number(void) {
+uint32_t pio_usb_host_get_frame_number(void) {
   return sof_count;
 }
 
