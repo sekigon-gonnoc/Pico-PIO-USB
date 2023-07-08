@@ -21,7 +21,8 @@
 
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
-static uint32_t sof_count = 0;
+// The sof_count may be incremented and then read on different cores.
+static volatile uint32_t sof_count = 0;
 static bool timer_active;
 
 static volatile bool cancel_timer_flag;
@@ -42,8 +43,6 @@ static void start_timer(alarm_pool_t *alarm_pool) {
   if (alarm_pool != NULL) {
     alarm_pool_add_repeating_timer_us(alarm_pool, -1000, sof_timer, NULL,
                                       &sof_rt);
-  } else {
-    add_repeating_timer_us(-1000, sof_timer, NULL, &sof_rt);
   }
 
   timer_active = true;
@@ -76,11 +75,12 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
                                   &pp->clk_div_ls_rx.div_int,
                                   &pp->clk_div_ls_rx.div_frac);
 
-  _alarm_pool = c->alarm_pool;
-  if (!_alarm_pool) {
-    _alarm_pool = alarm_pool_create(2, 1);
+  if (!c->skip_alarm_pool) {
+    _alarm_pool = c->alarm_pool;
+    if (!_alarm_pool) {
+      _alarm_pool = alarm_pool_create(2, 1);
+    }
   }
-
   start_timer(_alarm_pool);
 
   return &pio_usb_device[0];
@@ -177,12 +177,20 @@ static void __no_inline_not_in_flash_func(restore_fs_bus)(const pio_port_t *pp) 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, true);
 }
 
+// Time about 1us ourselves so it lives in RAM.
+static void __not_in_flash_func(busy_wait_1_us)(void) {
+  uint32_t start = timer_hw->timerawl;
+  while (timer_hw->timerawl == start) {
+      tight_loop_contents();
+  }
+}
+
 static bool __no_inline_not_in_flash_func(connection_check)(root_port_t *port) {
   if (pio_usb_bus_get_line_state(port) == PORT_PIN_SE0) {
-    busy_wait_us_32(1);
+    busy_wait_1_us();
 
     if (pio_usb_bus_get_line_state(port) == PORT_PIN_SE0) {
-      busy_wait_us_32(1);
+      busy_wait_1_us();
       // device disconnect
       port->connected = false;
       port->suspended = true;
@@ -201,10 +209,11 @@ static int usb_setup_transaction(pio_port_t *pp, endpoint_t *ep);
 static int usb_in_transaction(pio_port_t *pp, endpoint_t *ep);
 static int usb_out_transaction(pio_port_t *pp, endpoint_t *ep);
 
-static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
+void __not_in_flash_func(pio_usb_host_frame)(void) {
+  if (!timer_active) {
+    return;
+  }
   static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
-
-  (void)_rt;
 
   pio_port_t *pp = PIO_USB_PIO_PORT(0);
 
@@ -294,6 +303,12 @@ static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   uint16_t const sof_count_11b = sof_count & 0x7ff;
   sof_packet[2] = sof_count_11b & 0xff;
   sof_packet[3] = (calc_usb_crc5(sof_count_11b) << 3) | (sof_count_11b >> 8);
+}
+
+static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
+  (void)_rt;
+
+  pio_usb_host_frame();
 
   return true;
 }
@@ -410,7 +425,7 @@ bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
   // therefore we need to update ep_num and is_tx
   if ((ep_address & 0x7f) == 0) {
     ep->ep_num = ep_address;
-    ep->is_tx = (ep_address == 0) ? true : false;
+    ep->is_tx = ep_address == 0;
     ep->data_id = 1; // data and status always start with DATA1
   }
 

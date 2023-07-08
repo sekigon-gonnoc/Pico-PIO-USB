@@ -21,7 +21,7 @@
 #define usb_tx_fs_IRQ_COMP 0
 #define usb_tx_fs_IRQ_EOP 1
 
-static const uint16_t usb_tx_fs_program_instructions[] = {
+static const uint16_t __not_in_flash("fs_program") usb_tx_fs_program_instructions[] = {
     0xf445, //  0: set    y, 5            side 1     
     0xe083, //  1: set    pindirs, 3                 
             //     .wrap_target
@@ -49,7 +49,7 @@ static const uint16_t usb_tx_fs_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_tx_fs_program = {
+static const struct pio_program __not_in_flash("fs_program") usb_tx_fs_program = {
     .instructions = usb_tx_fs_program_instructions,
     .length = 22,
     .origin = -1,
@@ -73,7 +73,7 @@ static inline pio_sm_config usb_tx_fs_program_get_default_config(uint offset) {
 #define usb_tx_fs_pre_IRQ_COMP 0
 #define usb_tx_fs_pre_IRQ_EOP 1
 
-static const uint16_t usb_tx_fs_pre_program_instructions[] = {
+static const uint16_t __not_in_flash("fs_program") usb_tx_fs_pre_program_instructions[] = {
     0xf445, //  0: set    y, 5            side 1     
     0xe083, //  1: set    pindirs, 3                 
             //     .wrap_target
@@ -101,7 +101,7 @@ static const uint16_t usb_tx_fs_pre_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_tx_fs_pre_program = {
+static const struct pio_program __not_in_flash("fs_program") usb_tx_fs_pre_program = {
     .instructions = usb_tx_fs_pre_program_instructions,
     .length = 22,
     .origin = -1,
@@ -125,7 +125,7 @@ static inline pio_sm_config usb_tx_fs_pre_program_get_default_config(uint offset
 #define usb_tx_ls_IRQ_COMP 0
 #define usb_tx_ls_IRQ_EOP 1
 
-static const uint16_t usb_tx_ls_program_instructions[] = {
+static const uint16_t __not_in_flash("ls_program") usb_tx_ls_program_instructions[] = {
     0xf845, //  0: set    y, 5            side 2     
     0xe083, //  1: set    pindirs, 3                 
             //     .wrap_target
@@ -153,7 +153,7 @@ static const uint16_t usb_tx_ls_program_instructions[] = {
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program usb_tx_ls_program = {
+static const struct pio_program __not_in_flash("ls_program") usb_tx_ls_program = {
     .instructions = usb_tx_ls_program_instructions,
     .length = 22,
     .origin = -1,
