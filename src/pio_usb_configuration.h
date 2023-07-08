@@ -13,6 +13,7 @@ typedef struct {
     int8_t debug_pin_rx;
     int8_t debug_pin_eop;
     uint8_t extra_error_retry_count;
+    bool skip_alarm_pool;
 } pio_usb_configuration_t;
 
 #ifndef PIO_USB_DP_PIN_DEFAULT
@@ -41,6 +42,7 @@ typedef struct {
             PIO_USB_DMA_TX_DEFAULT, PIO_USB_RX_DEFAULT, PIO_SM_USB_RX_DEFAULT, \
             PIO_SM_USB_EOP_DEFAULT, NULL, PIO_USB_DEBUG_PIN_NONE,              \
             PIO_USB_DEBUG_PIN_NONE, PIO_USB_EXTRA_ERROR_RETRY_COUNT_DEFAULT,   \
+            .skip_alarm_pool = false  \
     }
 
 #define PIO_USB_EP_POOL_CNT 32
