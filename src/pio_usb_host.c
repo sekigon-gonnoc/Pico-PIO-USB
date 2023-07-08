@@ -308,8 +308,29 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
 
 static bool __no_inline_not_in_flash_func(sof_timer)(repeating_timer_t *_rt) {
   (void)_rt;
+  static bool sync;
+  static uint32_t next_sof   = 0;
 
+  // Adjust frame interval to 1ms
+  uint32_t        enter_time = timer_hw->timerawl;
+  if (enter_time >= next_sof) {
+    sync = false;
+  } else {
+    while (timer_hw->timerawl <= next_sof) {
+      continue;
+    }
+  }
+
+  // Start USB frame
   pio_usb_host_frame();
+
+  // Schedule next frame
+  if (!sync) {
+    sync     = true;
+    next_sof = enter_time + 1010;
+  } else {
+    next_sof += 1000;
+  }
 
   return true;
 }
