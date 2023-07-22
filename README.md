@@ -25,7 +25,7 @@ https://user-images.githubusercontent.com/43873124/146642806-bdf34af6-4342-4a95-
 - [host_hid_to_device_cdc.c](examples/host_hid_to_device_cdc/host_hid_to_device_cdc.c) is similar to **capture_hid_report.c** which print mouse/keyboard report from host port to device port's cdc. TinyUSB is used to manage both device (native usb) and host (pio usb) stack.
 
 ```bash
-cd example
+cd examples
 mkdir build
 cd build
 cmake ..
