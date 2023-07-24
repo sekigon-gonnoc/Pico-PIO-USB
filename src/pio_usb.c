@@ -381,6 +381,8 @@ bool __no_inline_not_in_flash_func(pio_usb_ll_transfer_start)(endpoint_t *ep,
     ep->new_data_flag = false;
   }
 
+  ep->transfer_started = false;
+  ep->transfer_aborted = false;
   ep->has_transfer = true;
 
   return true;

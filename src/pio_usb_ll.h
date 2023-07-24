@@ -170,6 +170,8 @@ bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
 bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
                                     uint8_t ep_address, uint8_t *buffer,
                                     uint16_t buflen);
+bool pio_usb_host_endpoint_abort_transfer(uint8_t root_idx, uint8_t device_address,
+                                          uint8_t ep_address);
 
 //--------------------------------------------------------------------
 // Device Controller functions

@@ -60,9 +60,9 @@ typedef struct {
   bool is_tx; // Host out or Device in
 
   volatile uint8_t ep_num;
-  volatile uint16_t size;
-  uint8_t buffer[64 + 4];
   volatile bool new_data_flag;
+  volatile uint16_t size;
+
   volatile uint8_t attr;
   volatile uint8_t interval;
   volatile uint8_t interval_counter;
@@ -70,6 +70,10 @@ typedef struct {
 
   volatile bool stalled;
   volatile bool has_transfer;
+  volatile bool transfer_started;
+  volatile bool transfer_aborted;
+
+  uint8_t buffer[64 + 4];
   uint8_t *app_buf;
   uint16_t total_len;
   uint16_t actual_len;
