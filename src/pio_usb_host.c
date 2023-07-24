@@ -248,7 +248,9 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
           continue;
         }
 
-        if (ep->has_transfer) {
+        if (ep->has_transfer && !ep->transfer_aborted) {
+          ep->transfer_started = true;
+
           if (ep->need_pre) {
             pp->need_pre = true;
           }
@@ -271,6 +273,8 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
             pp->need_pre = false;
             restore_fs_bus(pp);
           }
+
+          ep->transfer_started = false;
         }
       }
     }
@@ -430,6 +434,38 @@ bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
   }
 
   return pio_usb_ll_transfer_start(ep, buffer, buflen);
+}
+
+bool pio_usb_host_endpoint_abort_transfer(uint8_t root_idx, uint8_t device_address,
+                                          uint8_t ep_address) {
+  endpoint_t *ep = _find_ep(root_idx, device_address, ep_address);
+  if (!ep) {
+    printf("no endpoint 0x%02X\r\n", ep_address);
+    return false;
+  }
+
+  if (!ep->has_transfer) {
+    return false; // no transfer to abort
+  }
+
+  // mark transfer as aborted
+  ep->transfer_aborted = true;
+
+  // Race potential: SOF timer can be called before transfer_aborted is actually set
+  // and started the transfer. Wait 1 usb frame for transaction to complete.
+  // On the next SOF timer, transfer_aborted will be checked and skipped
+  while (ep->has_transfer && ep->transfer_started) {
+    busy_wait_ms(1);
+  }
+
+  // check if transfer is still active (could be completed)
+  bool const still_active = ep->has_transfer;
+  if (still_active) {
+    ep->has_transfer = false;
+  }
+  ep->transfer_aborted = false;
+
+  return still_active; // still active means transfer is successfully aborted
 }
 
 //--------------------------------------------------------------------+
