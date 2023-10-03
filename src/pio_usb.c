@@ -223,7 +223,7 @@ static void __no_inline_not_in_flash_func(initialize_host_programs)(
                           &usb_nrzi_decoder_debug_program, &pp->offset_rx,
                           c->debug_pin_rx);
   usb_rx_fs_program_init(pp->pio_usb_rx, pp->sm_rx, pp->offset_rx, port->pin_dp,
-                         c->debug_pin_rx);
+                         port->pin_dm, c->debug_pin_rx);
   pp->rx_reset_instr = pio_encode_jmp(pp->offset_rx);
   pp->rx_reset_instr2 = pio_encode_set(pio_x, 0);
 
@@ -231,7 +231,8 @@ static void __no_inline_not_in_flash_func(initialize_host_programs)(
                           &usb_edge_detector_debug_program, &pp->offset_eop,
                           c->debug_pin_eop);
   eop_detect_fs_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop,
-                             port->pin_dp, true, c->debug_pin_eop);
+                             port->pin_dp, port->pin_dm, true,
+                             c->debug_pin_eop);
 
   usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
 
