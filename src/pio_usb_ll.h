@@ -64,6 +64,10 @@ typedef struct {
   int8_t debug_pin_rx;
   int8_t debug_pin_eop;
 
+  const pio_program_t *fs_tx_program;
+  const pio_program_t *fs_tx_pre_program;
+  const pio_program_t *ls_tx_program;
+
   pio_clk_div_t clk_div_fs_tx;
   pio_clk_div_t clk_div_fs_rx;
   pio_clk_div_t clk_div_ls_tx;
@@ -99,8 +103,8 @@ extern pio_port_t pio_port[1];
 // Bus functions
 //--------------------------------------------------------------------+
 
-#define IRQ_TX_EOP_MASK (1 << usb_tx_fs_IRQ_EOP)
-#define IRQ_TX_COMP_MASK (1 << usb_tx_fs_IRQ_COMP)
+#define IRQ_TX_EOP_MASK (1 << usb_tx_dpdm_IRQ_EOP)
+#define IRQ_TX_COMP_MASK (1 << usb_tx_dpdm_IRQ_COMP)
 #define IRQ_TX_ALL_MASK (IRQ_TX_EOP_MASK | IRQ_TX_COMP_MASK)
 #define IRQ_RX_COMP_MASK (1 << IRQ_RX_EOP)
 #define IRQ_RX_ALL_MASK                                             \

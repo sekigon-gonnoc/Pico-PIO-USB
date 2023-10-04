@@ -1,6 +1,11 @@
 
 #pragma once
 
+typedef enum {
+  PIO_USB_PINOUT_DPDM = 0,  // DM = DP+1
+  PIO_USB_PINOUT_DMDP,      // DM = DP-1
+} PIO_USB_PINOUT;
+
 typedef struct {
     uint8_t pin_dp;
     uint8_t pio_tx_num;
@@ -13,6 +18,7 @@ typedef struct {
     int8_t debug_pin_rx;
     int8_t debug_pin_eop;
     bool skip_alarm_pool;
+    PIO_USB_PINOUT pinout;
 } pio_usb_configuration_t;
 
 #ifndef PIO_USB_DP_PIN_DEFAULT
