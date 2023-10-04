@@ -188,12 +188,16 @@ static __always_inline void pio_sm_set_jmp_pin(PIO pio, uint sm, uint jmp_pin) {
       (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
       (jmp_pin << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
 }
-static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, int pin_debug) {
-  pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
+static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, uint pin_dm, int pin_debug) {
+  if (pin_dp < pin_dm) {
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
+  } else {
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_dm, 2, false);
+  }
   gpio_pull_down(pin_dp);
-  gpio_pull_down(pin_dp + 1);  // dm
+  gpio_pull_down(pin_dm);
   gpio_set_inover(pin_dp, GPIO_OVERRIDE_INVERT);
-  gpio_set_inover(pin_dp + 1, GPIO_OVERRIDE_INVERT);
+  gpio_set_inover(pin_dm, GPIO_OVERRIDE_INVERT);
   pio_sm_config c;
   if (pin_debug < 0) {
     c = usb_nrzi_decoder_program_get_default_config(offset);
@@ -214,7 +218,7 @@ static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pi
   pio_sm_set_enabled(pio, sm, false);
 }
 static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
-                                           uint pin_dp, bool is_fs, int pin_debug) {
+                                           uint pin_dp, uint pin_dm, bool is_fs, int pin_debug) {
   pio_sm_config c;
   if (pin_debug < 0) {
     c = usb_edge_detector_program_get_default_config(offset);
@@ -226,7 +230,7 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
     sm_config_set_sideset_pins(&c, pin_debug);
   }
   sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
-  sm_config_set_jmp_pin(&c, pin_dp + 1);  // for JMP
+  sm_config_set_jmp_pin(&c, pin_dm);  // for JMP
   sm_config_set_in_shift(&c, false, false, 8);
   float div;
   if (is_fs) {
