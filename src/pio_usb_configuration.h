@@ -25,8 +25,6 @@ typedef struct {
 #define PIO_USB_DP_PIN_DEFAULT 0
 #endif
 
-#define PIO_USB_DM_PIN_DEFAULT (PIO_USB_DP_PIN_DEFAULT + 1)
-
 #define PIO_USB_TX_DEFAULT 0
 #define PIO_SM_USB_TX_DEFAULT 0
 #define PIO_USB_DMA_TX_DEFAULT 0
@@ -37,12 +35,12 @@ typedef struct {
 
 #define PIO_USB_DEBUG_PIN_NONE (-1)
 
-#define PIO_USB_DEFAULT_CONFIG                                                 \
-  {                                                                            \
-    PIO_USB_DP_PIN_DEFAULT, PIO_USB_TX_DEFAULT, PIO_SM_USB_TX_DEFAULT,         \
-        PIO_USB_DMA_TX_DEFAULT, PIO_USB_RX_DEFAULT, PIO_SM_USB_RX_DEFAULT,     \
-        PIO_SM_USB_EOP_DEFAULT, NULL, PIO_USB_DEBUG_PIN_NONE,                  \
-        PIO_USB_DEBUG_PIN_NONE, /*skip_alarm_pool=*/false                      \
+#define PIO_USB_DEFAULT_CONFIG                                             \
+  {                                                                        \
+    PIO_USB_DP_PIN_DEFAULT, PIO_USB_TX_DEFAULT, PIO_SM_USB_TX_DEFAULT,     \
+        PIO_USB_DMA_TX_DEFAULT, PIO_USB_RX_DEFAULT, PIO_SM_USB_RX_DEFAULT, \
+        PIO_SM_USB_EOP_DEFAULT, NULL, PIO_USB_DEBUG_PIN_NONE,              \
+        PIO_USB_DEBUG_PIN_NONE, false, PIO_USB_PINOUT_DPDM                 \
   }
 
 #define PIO_USB_EP_POOL_CNT 32
