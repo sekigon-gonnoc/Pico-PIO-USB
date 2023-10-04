@@ -333,11 +333,11 @@ void pio_usb_host_port_reset_start(uint8_t root_idx) {
   root->suspended = true;
 
   // Force line state to SE0
-  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00 << root->pin_dp),
-                            (0b11u << root->pin_dp));
+  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
+                            (1 << root->pin_dp) | (1 << root->pin_dm));
   pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx,
-                               (0b11u << root->pin_dp),
-                               (0b11u << root->pin_dp));
+                               (1 << root->pin_dp) | (1 << root->pin_dm),
+                               (1 << root->pin_dp) | (1 << root->pin_dm));
 }
 
 void pio_usb_host_port_reset_end(uint8_t root_idx) {
@@ -345,9 +345,8 @@ void pio_usb_host_port_reset_end(uint8_t root_idx) {
   pio_port_t *pp = PIO_USB_PIO_PORT(0);
 
   // line state to input
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx,
-                               (0b00u << root->pin_dp),
-                               (0b11u << root->pin_dp));
+  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
+                               (1 << root->pin_dp) | (1 << root->pin_dm));
 
   busy_wait_us(100); // TODO check if this is neccessary
 
@@ -596,15 +595,16 @@ static void on_device_connect(pio_port_t *pp, root_port_t *root,
     fullspeed_flag = false;
   }
 
-  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00 << root->pin_dp),
-                            (0b11u << root->pin_dp));
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b11u << root->pin_dp),
-                               (0b11u << root->pin_dp));
+  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
+                            (1 << root->pin_dp) | (1 << root->pin_dm));
+  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx,
+                               (1 << root->pin_dp) | (1 << root->pin_dm),
+                               (1 << root->pin_dp) | (1 << root->pin_dm));
 
   busy_wait_ms(100);
 
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, (0b00u << root->pin_dp),
-                               (0b11u << root->pin_dp));
+  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
+                               (1 << root->pin_dp) | (1 << root->pin_dm));
 
   busy_wait_us(100);
 
