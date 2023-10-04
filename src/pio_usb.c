@@ -40,7 +40,7 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   // send PRE token in full-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
   for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
-    uint16_t instr = usb_tx_fs_pre_program.instructions[i + USB_TX_EOP_OFFSET];
+    uint16_t instr = pp->fs_tx_pre_program->instructions[i + USB_TX_EOP_OFFSET];
     pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
   }
 
@@ -59,7 +59,7 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   // change bus speed to low-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
   for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
-    uint16_t instr = usb_tx_fs_program.instructions[i + USB_TX_EOP_OFFSET];
+    uint16_t instr = pp->fs_tx_program->instructions[i + USB_TX_EOP_OFFSET];
     pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
   }
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
@@ -215,9 +215,9 @@ static __always_inline void add_pio_host_rx_program(PIO pio,
 
 static void __no_inline_not_in_flash_func(initialize_host_programs)(
     pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port) {
-  pp->offset_tx = pio_add_program(pp->pio_usb_tx, &usb_tx_fs_program);
+  pp->offset_tx = pio_add_program(pp->pio_usb_tx, pp->fs_tx_program);
   usb_tx_fs_program_init(pp->pio_usb_tx, pp->sm_tx, pp->offset_tx,
-                         port->pin_dp);
+                         port->pin_dp, port->pin_dm);
 
   add_pio_host_rx_program(pp->pio_usb_rx, &usb_nrzi_decoder_program,
                           &usb_nrzi_decoder_debug_program, &pp->offset_rx,
@@ -234,7 +234,7 @@ static void __no_inline_not_in_flash_func(initialize_host_programs)(
                              port->pin_dp, port->pin_dm, true,
                              c->debug_pin_eop);
 
-  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp);
+  usb_tx_configure_pins(pp->pio_usb_tx, pp->sm_tx, port->pin_dp, port->pin_dm);
 
   pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
   pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_eop, port->pin_dm);
@@ -262,7 +262,18 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
   pp->sm_rx = c->sm_rx;
   pp->sm_eop = c->sm_eop;
   port->pin_dp = c->pin_dp;
-  port->pin_dm = c->pin_dp + 1;
+
+  if (c->pinout == PIO_USB_PINOUT_DPDM) {
+    port->pin_dm = c->pin_dp + 1;
+    pp->fs_tx_program = &usb_tx_dpdm_program;
+    pp->fs_tx_pre_program = &usb_tx_pre_dpdm_program;
+    pp->ls_tx_program = &usb_tx_dmdp_program;
+  } else {
+    port->pin_dm = c->pin_dp - 1;
+    pp->fs_tx_program = &usb_tx_dmdp_program;
+    pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
+    pp->ls_tx_program = &usb_tx_dpdm_program;
+  }
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
@@ -431,24 +442,26 @@ void __no_inline_not_in_flash_func(pio_usb_ll_transfer_complete)(
   ep->has_transfer = false;
 }
 
-int pio_usb_host_add_port(uint8_t pin_dp) {
+int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
   for (int idx = 0; idx < PIO_USB_ROOT_PORT_CNT; idx++) {
     root_port_t *root = PIO_USB_ROOT_PORT(idx);
     if (!root->initialized) {
       root->pin_dp = pin_dp;
-      root->pin_dm = pin_dp + 1;
 
-      PIO_USB_ROOT_PORT(idx)->pin_dp = pin_dp;
-      PIO_USB_ROOT_PORT(idx)->pin_dm = pin_dp + 1;
+      if (pinout == PIO_USB_PINOUT_DPDM) {
+        root->pin_dm = pin_dp + 1;
+      } else {
+        root->pin_dm = pin_dp - 1;
+      }
 
       gpio_pull_down(pin_dp);
-      gpio_pull_down(pin_dp + 1);
+      gpio_pull_down(root->pin_dm);
       pio_gpio_init(pio_port[0].pio_usb_tx, pin_dp);
-      pio_gpio_init(pio_port[0].pio_usb_tx, pin_dp + 1);
+      pio_gpio_init(pio_port[0].pio_usb_tx, root->pin_dm);
       gpio_set_inover(pin_dp, GPIO_OVERRIDE_INVERT);
-      gpio_set_inover(pin_dp + 1, GPIO_OVERRIDE_INVERT);
+      gpio_set_inover(root->pin_dm, GPIO_OVERRIDE_INVERT);
       pio_sm_set_pindirs_with_mask(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
-                                   (0b11 << pin_dp));
+                                   (1 << pin_dp) | (1 << root->pin_dm));
       port_pin_drive_setting(root);
       root->initialized = true;
 

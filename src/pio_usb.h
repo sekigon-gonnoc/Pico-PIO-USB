@@ -10,7 +10,7 @@
 
 // Host functions
 usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c);
-int pio_usb_host_add_port(uint8_t pin_dp);
+int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout);
 void pio_usb_host_task(void);
 void pio_usb_host_stop(void);
 void pio_usb_host_restart(void);
