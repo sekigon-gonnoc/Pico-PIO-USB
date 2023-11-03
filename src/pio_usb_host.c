@@ -195,6 +195,16 @@ static bool __no_inline_not_in_flash_func(connection_check)(root_port_t *port) {
       port->connected = false;
       port->suspended = true;
       port->ints |= PIO_USB_INTS_DISCONNECT_BITS;
+
+      // failed/retired all queuing transfer in this root
+      uint8_t root_idx = port - PIO_USB_ROOT_PORT(0);
+      for (int ep_idx = 0; ep_idx < PIO_USB_EP_POOL_CNT; ep_idx++) {
+        endpoint_t *ep = PIO_USB_ENDPOINT(ep_idx);
+        if ((ep->root_idx == root_idx) && ep->size && ep->has_transfer) {
+          pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+        }
+      }
+
       return false;
     }
   }
