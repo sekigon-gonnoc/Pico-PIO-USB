@@ -182,10 +182,11 @@ static inline bool find_key_in_report(hid_keyboard_report_t const *report, uint8
 
 
 // convert hid keycode to ascii and print via usb device CDC (ignore non-printable)
-static void process_kbd_report(uint8_t dev_addr, hid_keyboard_report_t const *report)
+static void process_kbd_report(uint8_t dev_addr, uint8_t instance, hid_keyboard_report_t const *report)
 {
   (void) dev_addr;
   static hid_keyboard_report_t prev_report = { 0, 0, {0} }; // previous report to check key released
+  static uint8_t leds = 0;
   bool flush = false;
 
   for(uint8_t i=0; i<6; i++)
@@ -214,6 +215,18 @@ static void process_kbd_report(uint8_t dev_addr, hid_keyboard_report_t const *re
           if (ch == '\n') tud_cdc_write("\r", 1);
           tud_cdc_write(&ch, 1);
           flush = true;
+        } else if (keycode == HID_KEY_CAPS_LOCK) {
+          leds ^= KEYBOARD_LED_CAPSLOCK;  //  = 2
+          tuh_hid_set_report(dev_addr, instance, 0, HID_REPORT_TYPE_OUTPUT,
+                             &leds, sizeof(leds));
+        } else if (keycode == HID_KEY_NUM_LOCK) {
+          leds ^= KEYBOARD_LED_NUMLOCK;
+          tuh_hid_set_report(dev_addr, instance, 0, HID_REPORT_TYPE_OUTPUT,
+                             &leds, sizeof(leds));
+        } else if (keycode == HID_KEY_SCROLL_LOCK) {
+          leds ^= KEYBOARD_LED_SCROLLLOCK;
+          tuh_hid_set_report(dev_addr, instance, 0, HID_REPORT_TYPE_OUTPUT,
+                             &leds, sizeof(leds));
         }
       }
     }
@@ -250,7 +263,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   switch(itf_protocol)
   {
     case HID_ITF_PROTOCOL_KEYBOARD:
-      process_kbd_report(dev_addr, (hid_keyboard_report_t const*) report );
+      process_kbd_report(dev_addr, instance, (hid_keyboard_report_t const*) report );
     break;
 
     case HID_ITF_PROTOCOL_MOUSE:
