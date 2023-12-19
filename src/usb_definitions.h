@@ -314,6 +314,8 @@ enum {
   { USB_REQ_TYP_CLASS | USB_REQ_REC_IFACE, 0x0A, 0, 0, 0, 0, 0, 0 }
 #define GET_HID_REPORT_DESCRIPTOR_DEFAULT                                      \
   { USB_REQ_DIR_IN | USB_REQ_REC_IFACE, 0x06, 0, 0x22, 0, 0, 0xff, 0 }
+#define SET_REPORT_REQ_DEFAULT                                                 \
+  { USB_REQ_TYP_CLASS | USB_REQ_REC_IFACE, 0x09, 0, 0x02, 0, 0, 0, 0 }
 #define GET_HUB_DESCRPTOR_REQUEST                                              \
   {                                                                            \
     USB_REQ_DIR_IN | USB_REQ_TYP_CLASS | USB_REQ_REC_DEVICE, 0x06, 0, 0x29, 0, \

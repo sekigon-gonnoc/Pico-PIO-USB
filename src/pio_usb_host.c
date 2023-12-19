@@ -1348,3 +1348,14 @@ static void __no_inline_not_in_flash_func(__pio_usb_host_irq_handler)(uint8_t ro
 void pio_usb_host_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_host_irq_handler")));
 
 #pragma GCC pop_options
+
+//--------------------------------------------------------------------+
+// Misc functions 
+//--------------------------------------------------------------------+
+int pio_usb_kbd_set_leds(usb_device_t *device, uint8_t port, uint8_t value) {
+  usb_setup_packet_t req = SET_REPORT_REQ_DEFAULT;
+  req.index_lsb = port;
+  req.length_lsb = 1;
+  req.length_msb = 0;
+  return control_out_protocol(device, (uint8_t *)&req, sizeof(req), &value, 1);
+}
