@@ -8,12 +8,12 @@ typedef enum {
 
 typedef struct {
     uint8_t pin_dp;
-    uint8_t pio_tx_num;
-    uint8_t sm_tx;
-    uint8_t tx_ch;
-    uint8_t pio_rx_num;
-    uint8_t sm_rx;
-    uint8_t sm_eop;
+    int8_t pio_tx_num;
+    int8_t sm_tx;
+    int8_t tx_ch;
+    int8_t pio_rx_num;
+    int8_t sm_rx;
+    int8_t sm_eop;
     void* alarm_pool;
     int8_t debug_pin_rx;
     int8_t debug_pin_eop;
