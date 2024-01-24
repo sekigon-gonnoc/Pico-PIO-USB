@@ -25,13 +25,13 @@ typedef struct {
 #define PIO_USB_DP_PIN_DEFAULT 0
 #endif
 
-#define PIO_USB_TX_DEFAULT 0
-#define PIO_SM_USB_TX_DEFAULT 0
-#define PIO_USB_DMA_TX_DEFAULT 0
+#define PIO_USB_TX_DEFAULT (-1)
+#define PIO_SM_USB_TX_DEFAULT (-1)
+#define PIO_USB_DMA_TX_DEFAULT (-1)
 
-#define PIO_USB_RX_DEFAULT 1
-#define PIO_SM_USB_RX_DEFAULT 0
-#define PIO_SM_USB_EOP_DEFAULT 1
+#define PIO_USB_RX_DEFAULT (-1)
+#define PIO_SM_USB_RX_DEFAULT (-1)
+#define PIO_SM_USB_EOP_DEFAULT (-1)
 
 #define PIO_USB_DEBUG_PIN_NONE (-1)
 
