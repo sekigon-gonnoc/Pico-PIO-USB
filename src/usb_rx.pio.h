@@ -105,32 +105,27 @@ static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(u
 // ---------------- //
 
 #define usb_nrzi_decoder_wrap_target 0
-#define usb_nrzi_decoder_wrap 14
+#define usb_nrzi_decoder_wrap 6
 
 static const uint16_t usb_nrzi_decoder_program_instructions[] = {
             //     .wrap_target
     0xe046, //  0: set    y, 6                       
     0x20c4, //  1: wait   1 irq, 4                   
-    0x00c9, //  2: jmp    pin, 9                     
-    0x006e, //  3: jmp    !y, 14                     
-    0x0027, //  4: jmp    !x, 7                      
+    0x0066, //  2: jmp    !y, 6                      
+    0x00c7, //  3: jmp    pin, 7                     
+    0x0028, //  4: jmp    !x, 8                      
     0x4061, //  5: in     null, 1                    
-    0x000e, //  6: jmp    14                         
-    0x40e1, //  7: in     osr, 1                     
-    0x0081, //  8: jmp    y--, 1                     
-    0x006e, //  9: jmp    !y, 14                     
-    0x002d, // 10: jmp    !x, 13                     
-    0x4021, // 11: in     x, 1                       
-    0x0081, // 12: jmp    y--, 1                     
-    0x4061, // 13: in     null, 1                    
-    0xa029, // 14: mov    x, !x                      
+    0xa029, //  6: mov    x, !x                      
             //     .wrap
+    0x0025, //  7: jmp    !x, 5                      
+    0x40e1, //  8: in     osr, 1                     
+    0x0081, //  9: jmp    y--, 1                     
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program usb_nrzi_decoder_program = {
     .instructions = usb_nrzi_decoder_program_instructions,
-    .length = 15,
+    .length = 10,
     .origin = -1,
 };
 
@@ -146,32 +141,27 @@ static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint off
 // ---------------------- //
 
 #define usb_nrzi_decoder_debug_wrap_target 0
-#define usb_nrzi_decoder_debug_wrap 14
+#define usb_nrzi_decoder_debug_wrap 6
 
 static const uint16_t usb_nrzi_decoder_debug_program_instructions[] = {
             //     .wrap_target
     0xe046, //  0: set    y, 6                       
     0x20c4, //  1: wait   1 irq, 4                   
-    0x00c9, //  2: jmp    pin, 9                     
-    0x106e, //  3: jmp    !y, 14          side 0     
-    0x1027, //  4: jmp    !x, 7           side 0     
+    0x0066, //  2: jmp    !y, 6                      
+    0x00c7, //  3: jmp    pin, 7                     
+    0x1028, //  4: jmp    !x, 8           side 0     
     0x4061, //  5: in     null, 1                    
-    0x000e, //  6: jmp    14                         
-    0x40e1, //  7: in     osr, 1                     
-    0x0081, //  8: jmp    y--, 1                     
-    0x186e, //  9: jmp    !y, 14          side 1     
-    0x182d, // 10: jmp    !x, 13          side 1     
-    0x4021, // 11: in     x, 1                       
-    0x0081, // 12: jmp    y--, 1                     
-    0x4061, // 13: in     null, 1                    
-    0xa029, // 14: mov    x, !x                      
+    0xa029, //  6: mov    x, !x                      
             //     .wrap
+    0x1825, //  7: jmp    !x, 5           side 1     
+    0x40e1, //  8: in     osr, 1                     
+    0x0081, //  9: jmp    y--, 1                     
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program usb_nrzi_decoder_debug_program = {
     .instructions = usb_nrzi_decoder_debug_program_instructions,
-    .length = 15,
+    .length = 10,
     .origin = -1,
 };
 
