@@ -94,6 +94,7 @@ typedef struct struct_root_port_t {
   volatile uint8_t pin_dm;
   volatile usb_device_event_t event;
   usb_device_t *root_device;
+  PIO_USB_PINOUT pinout;
 
   volatile bool is_fullspeed;
   volatile bool connected;

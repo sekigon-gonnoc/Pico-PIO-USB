@@ -124,8 +124,23 @@ static __always_inline void override_pio_rx_program(PIO pio,
   }
 }
 
+static void
+__no_inline_not_in_flash_func(configure_tx_program)(pio_port_t *pp,
+                                                    root_port_t *port) {
+  if (port->pinout == PIO_USB_PINOUT_DPDM) {
+    pp->fs_tx_program = &usb_tx_dpdm_program;
+    pp->fs_tx_pre_program = &usb_tx_pre_dpdm_program;
+    pp->ls_tx_program = &usb_tx_dmdp_program;
+  } else {
+    pp->fs_tx_program = &usb_tx_dmdp_program;
+    pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
+    pp->ls_tx_program = &usb_tx_dpdm_program;
+  }
+}
+
 static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
-    pio_port_t const *pp, root_port_t *port) {
+    pio_port_t *pp, root_port_t *port) {
+  configure_tx_program(pp, port);
   override_pio_program(pp->pio_usb_tx, pp->fs_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
@@ -140,7 +155,8 @@ static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
 }
 
 static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
-    pio_port_t const *pp, root_port_t *port) {
+    pio_port_t *pp, root_port_t *port) {
+  configure_tx_program(pp, port);
   override_pio_program(pp->pio_usb_tx, pp->ls_tx_program, pp->offset_tx);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
 

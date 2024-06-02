@@ -274,6 +274,7 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
     pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
     pp->ls_tx_program = &usb_tx_dpdm_program;
   }
+  port->pinout = c->pinout;
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
@@ -453,6 +454,7 @@ int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
       } else {
         root->pin_dm = pin_dp - 1;
       }
+      root->pinout = pinout;
 
       gpio_pull_down(pin_dp);
       gpio_pull_down(root->pin_dm);
