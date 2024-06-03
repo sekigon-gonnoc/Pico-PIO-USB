@@ -8,6 +8,7 @@
 #include "hardware/pio.h"
 #include "pio_usb_configuration.h"
 #include "usb_definitions.h"
+#include <stdint.h>
 
 enum {
   PIO_USB_INTS_CONNECT_POS = 0,
@@ -57,6 +58,8 @@ typedef struct {
   uint offset_rx;
   uint sm_eop;
   uint offset_eop;
+  uint tx_reset_instr;
+  uint tx_start_instr;
   uint rx_reset_instr;
   uint rx_reset_instr2;
   uint device_rx_irq_num;
@@ -103,9 +106,8 @@ extern pio_port_t pio_port[1];
 // Bus functions
 //--------------------------------------------------------------------+
 
-#define IRQ_TX_EOP_MASK (1 << usb_tx_dpdm_IRQ_EOP)
-#define IRQ_TX_COMP_MASK (1 << usb_tx_dpdm_IRQ_COMP)
-#define IRQ_TX_ALL_MASK (IRQ_TX_EOP_MASK | IRQ_TX_COMP_MASK)
+#define IRQ_TX_EOP_MASK (1 << IRQ_TX_EOP)
+#define IRQ_TX_ALL_MASK (IRQ_TX_EOP_MASK)
 #define IRQ_RX_COMP_MASK (1 << IRQ_RX_EOP)
 #define IRQ_RX_ALL_MASK                                             \
   ((1 << IRQ_RX_EOP) | (1 << IRQ_RX_BS_ERR) | (1 << IRQ_RX_START) | \
@@ -154,6 +156,15 @@ pio_usb_ll_get_transaction_len(endpoint_t *ep) {
   uint16_t remaining = ep->total_len - ep->actual_len;
   return (remaining < ep->size) ? remaining : ep->size;
 }
+
+enum {
+  PIO_USB_TX_ENCODED_DATA_SE0 = 0,
+  PIO_USB_TX_ENCODED_DATA_K = 1,
+  PIO_USB_TX_ENCODED_DATA_COMP = 2,
+  PIO_USB_TX_ENCODED_DATA_J = 3,
+};
+uint8_t pio_usb_ll_encode_tx_data(uint8_t const *buffer, uint8_t buffer_len,
+                                  uint8_t *encoded_data);
 
 //--------------------------------------------------------------------
 // Host Controller functions

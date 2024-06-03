@@ -135,9 +135,7 @@ static bool do_test(pio_port_t *pp) {
   pio_usb_bus_start_receive(pp);
 
   // Start transmitter
-  pio_usb_bus_usb_transfer(pp, ep->buffer,
-                           pio_usb_ll_get_transaction_len(ep) + 4);
-
+  pio_usb_bus_usb_transfer(pp, ep->buffer, ep->encoded_data_len);
 
   // Check received data
   uint8_t received[sizeof(test_data) + 4];
@@ -148,7 +146,7 @@ static bool do_test(pio_port_t *pp) {
     if (received_cnt >= sizeof(received)) {
       printf("\t[NG] Invalid size\n");
       success = false;
-      return success;
+      break;
     }
     received[received_cnt++] = pio_sm_get(pp->pio_usb_rx, pp->sm_rx) >> 24;
   }
@@ -165,6 +163,8 @@ static bool do_test(pio_port_t *pp) {
       success = false;
     }
   }
+
+  ep->has_transfer = false;
 
   return success;
 }

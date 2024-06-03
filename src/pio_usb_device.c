@@ -25,6 +25,9 @@ static uint8_t new_devaddr = 0;
 static uint8_t ep0_crc5_lut[16];
 static __unused usb_descriptor_buffers_t descriptor_buffers;
 
+static uint8_t nak_encoded[5];
+static uint8_t stall_encoded[5];
+
 static void __no_inline_not_in_flash_func(update_ep0_crc5_lut)(uint8_t addr) {
   uint16_t dat;
   uint8_t crc;
@@ -99,22 +102,20 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
     if (ep_num < 0) {
       return;
     }
-    static uint8_t hand_shake_token[2] = {USB_SYNC, USB_PID_STALL};
 
     endpoint_t *ep = PIO_USB_ENDPOINT((ep_num << 1) | 0x01);
     uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
 
     pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+    pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
     volatile bool has_transfer = ep->has_transfer;
 
     if (has_transfer) {
-      dma_channel_transfer_from_buffer_now(pp->tx_ch, ep->buffer, xact_len + 4);
+      dma_channel_transfer_from_buffer_now(pp->tx_ch, ep->buffer, ep->encoded_data_len);
     } else if (ep->stalled) {
-      hand_shake_token[1] = USB_PID_STALL;
-      dma_channel_transfer_from_buffer_now(pp->tx_ch, hand_shake_token, 2);
+      dma_channel_transfer_from_buffer_now(pp->tx_ch, stall_encoded, 5);
     } else {
-      hand_shake_token[1] = USB_PID_NAK;
-      dma_channel_transfer_from_buffer_now(pp->tx_ch, hand_shake_token, 2);
+      dma_channel_transfer_from_buffer_now(pp->tx_ch, nak_encoded, 5);
     }
 
     pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
@@ -249,6 +250,13 @@ usb_device_t *pio_usb_device_init(const pio_usb_configuration_t *c,
   pp->device_rx_irq_num = (pp->pio_usb_rx == pio0) ? PIO0_IRQ_0 : PIO1_IRQ_0;
   irq_set_exclusive_handler(pp->device_rx_irq_num, usb_device_packet_handler);
   irq_set_enabled(pp->device_rx_irq_num, true);
+
+
+  // pre-encode handshake packets
+  uint8_t raw_packet[] = {USB_SYNC, USB_PID_NAK};
+  pio_usb_ll_encode_tx_data(raw_packet, 2, nak_encoded);
+  raw_packet[1] = USB_PID_STALL;
+  pio_usb_ll_encode_tx_data(raw_packet, 2, stall_encoded);
 
   return dev;
 }

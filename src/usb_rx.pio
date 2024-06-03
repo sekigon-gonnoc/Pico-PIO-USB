@@ -1,5 +1,5 @@
 
-; Copyright (c) 2021-2022 sekigon-gonnoc
+; Copyright (c) 2021-2024 sekigon-gonnoc
 
 .define public IRQ_RX_BS_ERR    1   ; bit stuffinc error
 .define public IRQ_RX_EOP       2   ; eop detect flag
