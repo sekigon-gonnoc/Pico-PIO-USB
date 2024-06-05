@@ -53,7 +53,7 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
 
   pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
-  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK;       // clear complete flag
+  pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK;       // clear complete flag
 
   io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
@@ -88,7 +88,7 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(const pio_port_t *pp,
 
   pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
-  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK; // clear complete flag
+  pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
   io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
