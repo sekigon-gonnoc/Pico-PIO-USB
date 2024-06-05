@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "hardware/gpio.h"
+#include "hardware/sync.h"
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include "pico/bootrom.h"
@@ -56,7 +57,9 @@ int main() {
       root->connected = true;
       root->suspended = false;
 
+      uint32_t irq = save_and_disable_interrupts();
       pio_usb_host_frame();
+      restore_interrupts(irq);
 
       printf("%s\n", do_test(pp) ? "[OK]" : "[NG]");
 
@@ -74,7 +77,9 @@ int main() {
       root->connected = true;
       root->suspended = false;
 
+      uint32_t irq = save_and_disable_interrupts();
       pio_usb_host_frame();
+      restore_interrupts(irq);
 
       printf("%s\n", do_test(pp) ? "[OK]" : "[NG]");
 
@@ -92,7 +97,9 @@ int main() {
       root->connected = true;
       root->suspended = false;
 
+      uint32_t irq = save_and_disable_interrupts();
       pio_usb_host_frame();
+      restore_interrupts(irq);
 
       printf("%s\n", do_test(pp) ? "[OK]" : "[NG]");
 
@@ -110,7 +117,9 @@ int main() {
       root->connected = true;
       root->suspended = false;
 
+      uint32_t irq = save_and_disable_interrupts();
       pio_usb_host_frame();
+      restore_interrupts(irq);
 
       printf("%s\n", do_test(pp) ? "[OK]" : "[NG]");
 
@@ -134,8 +143,10 @@ static bool do_test(pio_port_t *pp) {
   pio_usb_bus_prepare_receive(pp);
   pio_usb_bus_start_receive(pp);
 
+  uint32_t irq = save_and_disable_interrupts();
   // Start transmitter
   pio_usb_bus_usb_transfer(pp, ep->buffer, ep->encoded_data_len);
+  restore_interrupts(irq);
 
   // Check received data
   uint8_t received[sizeof(test_data) + 4];
