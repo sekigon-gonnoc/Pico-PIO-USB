@@ -12,6 +12,7 @@
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/pio.h"
+#include "hardware/pio_instructions.h"
 #include "hardware/sync.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
@@ -58,6 +59,7 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
     continue;
   }
+  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
   while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
     continue;
   }
@@ -69,6 +71,7 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
 
+  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
   pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
   SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
 
@@ -87,7 +90,12 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(const pio_port_t *pp,
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
   pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK; // clear complete flag
 
+  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
+    continue;
+  }
+  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
+  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
     continue;
   }
 }
@@ -449,9 +457,14 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
   bit_idx += 2;
   byte_idx = bit_idx >> 3;
 
+  encoded_data[byte_idx] <<= 2;
+  encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_COMP;
+  bit_idx += 2;
+  byte_idx = bit_idx >> 3;
+
   do {
     encoded_data[byte_idx] <<= 2;
-    encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
+    encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
     bit_idx += 2;
     byte_idx = bit_idx >> 3;
   } while ((bit_idx & 0x07) != 0);

@@ -13,6 +13,7 @@
 
 #include "hardware/sync.h"
 #include "hardware/pio.h"
+#include "hardware/gpio.h"
 
 #include "pio_usb.h"
 #include "pio_usb_ll.h"
@@ -364,27 +365,25 @@ uint32_t pio_usb_host_get_frame_number(void) {
 
 void pio_usb_host_port_reset_start(uint8_t root_idx) {
   root_port_t *root = PIO_USB_ROOT_PORT(root_idx);
-  pio_port_t *pp = PIO_USB_PIO_PORT(0);
 
   // bus is not operating while in reset
   root->suspended = true;
 
   // Force line state to SE0
-  pio_sm_set_pins_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
-                            (1 << root->pin_dp) | (1 << root->pin_dm));
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx,
-                               (1 << root->pin_dp) | (1 << root->pin_dm),
-                               (1 << root->pin_dp) | (1 << root->pin_dm));
+  gpio_set_outover(root->pin_dp,  GPIO_OVERRIDE_LOW);
+  gpio_set_outover(root->pin_dm,  GPIO_OVERRIDE_LOW);
+  gpio_set_oeover(root->pin_dp,  GPIO_OVERRIDE_HIGH);
+  gpio_set_oeover(root->pin_dm,  GPIO_OVERRIDE_HIGH);
 }
 
 void pio_usb_host_port_reset_end(uint8_t root_idx) {
   root_port_t *root = PIO_USB_ROOT_PORT(root_idx);
-  pio_port_t *pp = PIO_USB_PIO_PORT(0);
 
   // line state to input
-  pio_sm_set_pindirs_with_mask(pp->pio_usb_tx, pp->sm_tx, 0,
-                               (1 << root->pin_dp) | (1 << root->pin_dm));
-
+  gpio_set_oeover(root->pin_dp,  GPIO_OVERRIDE_NORMAL);
+  gpio_set_oeover(root->pin_dm,  GPIO_OVERRIDE_NORMAL);
+  gpio_set_outover(root->pin_dp,  GPIO_OVERRIDE_NORMAL);
+  gpio_set_outover(root->pin_dm,  GPIO_OVERRIDE_NORMAL);
   busy_wait_us(100); // TODO check if this is neccessary
 
   // bus back to operating
@@ -554,14 +553,6 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
 
   pio_usb_bus_prepare_receive(pp);
   pio_usb_bus_send_token(pp, USB_PID_OUT, ep->dev_addr, ep->ep_num);
-  // ensure previous tx complete
-  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
-  while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
-    continue;
-  }
-  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
-    continue;
-  }
 
   pio_usb_bus_usb_transfer(pp, ep->buffer, ep->encoded_data_len);
   pio_usb_bus_start_receive(pp);
@@ -596,14 +587,6 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
   pio_usb_bus_prepare_receive(pp);
 
   pio_usb_bus_send_token(pp, USB_PID_SETUP, ep->dev_addr, 0);
-  // ensure previous tx complete
-  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
-  while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
-    continue;
-  }
-  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
-    continue;
-  }
 
   // Data
   ep->data_id = 0; // set to DATA0
