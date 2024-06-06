@@ -229,7 +229,7 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
     div = (float)clock_get_hz(clk_sys) / (12000000);
   }
   sm_config_set_clkdiv(&c, div);
-  pio_sm_init(pio, sm, offset + 1, &c);
+  pio_sm_init(pio, sm, offset, &c);
   pio_sm_set_enabled(pio, sm, true);
 }
 

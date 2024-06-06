@@ -36,33 +36,28 @@ endpoint_t pio_usb_ep_pool[PIO_USB_EP_POOL_CNT];
 static uint8_t ack_encoded[5];
 static uint8_t nak_encoded[5];
 static uint8_t stall_encoded[5];
+static uint8_t pre_encoded[5];
 
 //--------------------------------------------------------------------+
 // Bus functions
 //--------------------------------------------------------------------+
 
 static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
-  uint8_t data[] = {USB_SYNC, USB_PID_PRE};
-
   // send PRE token in full-speed
   uint16_t instr = pp->fs_tx_pre_program->instructions[0];
   pp->pio_usb_tx->instr_mem[pp->offset_tx] = instr;
 
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
-  dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
-
   pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
+  dma_channel_transfer_from_buffer_now(pp->tx_ch, pre_encoded,
+                                       sizeof(pre_encoded));
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK;       // clear complete flag
 
-  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
     continue;
   }
   pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
-  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
-    continue;
-  }
 
   // change bus speed to low-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
@@ -71,9 +66,9 @@ static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
 
-  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
-  pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
-  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
+  // pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
+  // pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
+  // SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
@@ -141,10 +136,10 @@ void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t
   pio_sm_restart(pp->pio_usb_rx, pp->sm_rx);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_start_receive)(const pio_port_t *pp) {
-  pp->pio_usb_rx->ctrl |= (1 << pp->sm_rx);
   pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
 }
 
@@ -343,6 +338,8 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
   pio_usb_ll_encode_tx_data(raw_packet, 2, nak_encoded);
   raw_packet[1] = USB_PID_STALL;
   pio_usb_ll_encode_tx_data(raw_packet, 2, stall_encoded);
+  raw_packet[1] = USB_PID_PRE;
+  pio_usb_ll_encode_tx_data(raw_packet, 2, pre_encoded);
 }
 
 //--------------------------------------------------------------------+
