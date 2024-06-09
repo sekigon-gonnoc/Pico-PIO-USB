@@ -107,6 +107,7 @@ typedef struct struct_root_port_t {
   volatile uint32_t ep_complete;
   volatile uint32_t ep_error;
   volatile uint32_t ep_stalled;
+  volatile uint32_t ep_continue;
 
   // device only
   uint8_t dev_addr;
