@@ -405,18 +405,19 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
     uint8_t const *buffer, uint8_t buffer_len, uint8_t *encoded_data) {
   uint16_t bit_idx = 0;
   int current_state = 1;
-  int bit_stuffing = 0;
+  int bit_stuffing = 6;
   for (int idx = 0; idx < buffer_len; idx++) {
+    uint8_t byte = buffer[idx];
     for (int b = 0; b < 8; b++) {
-      uint8_t byte_idx = bit_idx >> 3;
+      uint8_t byte_idx = bit_idx >> 2;
       encoded_data[byte_idx] <<= 2;
-      if (buffer[idx] & (1 << b)) {
+      if (byte & (1 << b)) {
         if (current_state) {
           encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
         } else {
           encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
         }
-        bit_stuffing++;
+        bit_stuffing--;
       } else {
         if (current_state) {
           encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
@@ -425,13 +426,13 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
           encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
           current_state = 1;
         }
-        bit_stuffing = 0;
+        bit_stuffing = 6;
       }
 
-      bit_idx += 2;
-      byte_idx = bit_idx >> 3;
+      bit_idx++;
 
-      if (bit_stuffing == 6) {
+      if (bit_stuffing == 0) {
+        byte_idx = bit_idx >> 2;
         encoded_data[byte_idx] <<= 2;
 
         if (current_state) {
@@ -441,32 +442,30 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
           encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
           current_state = 1;
         }
-        bit_stuffing = 0;
-
-        bit_idx += 2;
+        bit_stuffing = 6;
+        bit_idx++;
       }
     }
   }
 
-  uint8_t byte_idx = bit_idx >> 3;
+  uint8_t byte_idx = bit_idx >> 2;
   encoded_data[byte_idx] <<= 2;
   encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_SE0;
-  bit_idx += 2;
-  byte_idx = bit_idx >> 3;
+  bit_idx++;
 
+  byte_idx = bit_idx >> 2;
   encoded_data[byte_idx] <<= 2;
   encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_COMP;
-  bit_idx += 2;
-  byte_idx = bit_idx >> 3;
+  bit_idx++;
 
   do {
+    byte_idx = bit_idx >> 2;
     encoded_data[byte_idx] <<= 2;
     encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
-    bit_idx += 2;
-    byte_idx = bit_idx >> 3;
-  } while ((bit_idx & 0x07) != 0);
+    bit_idx++;
+  } while (bit_idx & 0x07);
 
-  byte_idx = bit_idx >> 3;
+  byte_idx = bit_idx >> 2;
   return byte_idx;
 }
 

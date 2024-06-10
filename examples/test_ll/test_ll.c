@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
@@ -124,6 +125,23 @@ int main() {
       printf("%s\n", do_test(pp) ? "[OK]" : "[NG]");
 
       root->connected = false;
+    }
+
+    {
+      printf("\nTest 5: Software Encode Speed\n");
+      uint8_t buffer[64];
+      uint8_t encoded_data[64 * 2 * 7 / 6 + 2];
+      for (size_t i = 0; i < sizeof(buffer); i++) {
+        buffer[i] = i;
+      }
+
+      absolute_time_t start = get_absolute_time();
+      for (int i = 0; i < 1000; i++) {
+        pio_usb_ll_encode_tx_data(buffer, sizeof(buffer), encoded_data);
+      }
+      absolute_time_t end = get_absolute_time();
+      int64_t diff = absolute_time_diff_us(start, end);
+      printf("%f us (64bytes packet)", diff / 1000.0f);
     }
   }
 }
