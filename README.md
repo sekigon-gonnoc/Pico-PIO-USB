@@ -39,9 +39,8 @@ Another sample program for split keyboard with QMK
 
 ## Resource Usage
 
-- Two PIO
-  - One PIO is for USB transmitter using 22 instruction and one state machine
-  - Another PIO is for USB receiver using 31 instruction and two state machine
+
+- 1 PIO, 3 state machines, 32 instructions
 - Two GPIO for D+/D- (Series 22ohm resitors are better)
 - 15KB ROM and RAM
 - (For Host) One 1ms repeating timer
