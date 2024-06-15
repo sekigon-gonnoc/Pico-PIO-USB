@@ -1,5 +1,5 @@
 
-; Copyright (c) 2021-2022 sekigon-gonnoc
+; Copyright (c) 2021-2024 sekigon-gonnoc
 
 .define public IRQ_RX_BS_ERR    1   ; bit stuffinc error
 .define public IRQ_RX_EOP       2   ; eop detect flag
@@ -100,32 +100,28 @@ set_y:
     set y, BIT_REPEAT_COUNT
 irq_wait:
     wait 1 irq DECODER_TRIGGER			; wait signal from edge detector
+    jmp !y flip			; ignore stuff bit, without error check
     jmp PIN pin_high
 pin_low:
-    jmp !y flip			; ignore stuff bit, without error check
     jmp !x K1
 K2:
     ; x==1
-    in null, 1
-    jmp flip
-K1:
-    ; x==0
-    in osr, 1
-    jmp y-- irq_wait
-    
-pin_high:
-    jmp !y flip			; ignore stuff bit, without error check
-    jmp !x J1
-J2:
-    ; x==1
-    in x, 1
-    jmp y-- irq_wait
 J1:
     ; x==0
     in null, 1
 flip:
     mov x, ~x
 .wrap
+    
+pin_high:
+    jmp !x J1
+J2:
+    ; x==1
+K1:
+    ; x==0
+    in osr, 1
+    jmp y-- irq_wait ; y is always not 0 at here
+
 .program usb_nrzi_decoder_debug
 .side_set 1 opt
 start:
@@ -135,32 +131,27 @@ set_y:
     set y, BIT_REPEAT_COUNT
 irq_wait:
     wait 1 irq DECODER_TRIGGER    ; wait signal from edge detector
+    jmp !y flip	; ignore stuff bit, without error check
     jmp PIN pin_high
 pin_low:
-    jmp !y flip	side db0	; ignore stuff bit, without error check
     jmp !x K1 side db0
 K2:
     ; x==1
-    in null, 1
-    jmp flip
-K1:
-    ; x==0
-    in osr, 1
-    jmp y-- irq_wait
-    
-pin_high:
-    jmp !y flip	side db1	; ignore stuff bit, without error check
-    jmp !x J1 side db1
-J2:
-    ; x==1
-    in x, 1
-    jmp y-- irq_wait
 J1:
     ; x==0
     in null, 1
 flip:
     mov x, ~x
 .wrap
+    
+pin_high:
+    jmp !x J1 side db1
+K1:
+    ; x==0
+J2:
+    ; x==1
+    in osr, 1
+    jmp y-- irq_wait ; y is always not 0 at here
 
 % c-sdk {
 #include "hardware/clocks.h"
@@ -235,7 +226,7 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
 
   sm_config_set_clkdiv(&c, div);
 
-  pio_sm_init(pio, sm, offset + 1, &c);
+  pio_sm_init(pio, sm, offset, &c);
   pio_sm_set_enabled(pio, sm, true);
 }
 

@@ -12,12 +12,15 @@
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/pio.h"
+#include "hardware/pio_instructions.h"
 #include "hardware/sync.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
+#include "pico/platform.h"
 
 #include "pio_usb.h"
 #include "usb_definitions.h"
+#include "pio_usb_configuration.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
 #include "usb_tx.pio.h"
@@ -30,42 +33,42 @@ pio_port_t pio_port[1];
 root_port_t pio_usb_root_port[PIO_USB_ROOT_PORT_CNT];
 endpoint_t pio_usb_ep_pool[PIO_USB_EP_POOL_CNT];
 
+static uint8_t ack_encoded[5];
+static uint8_t nak_encoded[5];
+static uint8_t stall_encoded[5];
+static uint8_t pre_encoded[5];
+
 //--------------------------------------------------------------------+
 // Bus functions
 //--------------------------------------------------------------------+
 
 static void __no_inline_not_in_flash_func(send_pre)(const pio_port_t *pp) {
-  uint8_t data[] = {USB_SYNC, USB_PID_PRE};
-
   // send PRE token in full-speed
-  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
-    uint16_t instr = pp->fs_tx_pre_program->instructions[i + USB_TX_EOP_OFFSET];
-    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
-  }
+  uint16_t instr = pp->fs_tx_pre_program->instructions[0];
+  pp->pio_usb_tx->instr_mem[pp->offset_tx] = instr;
 
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
 
-  dma_channel_transfer_from_buffer_now(pp->tx_ch, data, 2);
+  pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
+  dma_channel_transfer_from_buffer_now(pp->tx_ch, pre_encoded,
+                                       sizeof(pre_encoded));
+  pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK;       // clear complete flag
 
-  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
-  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK;       // clear complete flag
-  pp->pio_usb_tx->irq_force |= IRQ_TX_EOP_MASK; // disable eop
-
-  while ((pp->pio_usb_tx->irq & IRQ_TX_COMP_MASK) == 0) {
+  while ((pp->pio_usb_tx->irq & IRQ_TX_EOP_MASK) == 0) {
     continue;
   }
+  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
 
   // change bus speed to low-speed
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
-  for (uint i = 0; i < USB_TX_EOP_DISABLER_LEN; ++i) {
-    uint16_t instr = pp->fs_tx_program->instructions[i + USB_TX_EOP_OFFSET];
-    pp->pio_usb_tx->instr_mem[pp->offset_tx + i + USB_TX_EOP_OFFSET] = instr;
-  }
+  instr = pp->fs_tx_program->instructions[0];
+  pp->pio_usb_tx->instr_mem[pp->offset_tx] = instr;
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_ls_tx);
+  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
 
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
-  SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
+  // pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
+  // pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
+  // SM_SET_CLKDIV_MAXSPEED(pp->pio_usb_rx, pp->sm_rx);
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
   SM_SET_CLKDIV(pp->pio_usb_rx, pp->sm_eop, pp->clk_div_ls_rx);
@@ -78,20 +81,36 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(const pio_port_t *pp,
     send_pre(pp);
   }
 
+  pio_sm_exec(pp->pio_usb_tx, pp->sm_tx, pp->tx_start_instr);
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
+  pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
-  pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
-  pp->pio_usb_tx->irq |= IRQ_TX_ALL_MASK; // clear complete flag
-
+  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
+    continue;
+  }
+  pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
+  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
     continue;
   }
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_send_handshake)(
     const pio_port_t *pp, uint8_t pid) {
-  uint8_t data[] = {USB_SYNC, pid};
-  pio_usb_bus_usb_transfer(pp, data, sizeof(data));
+  switch (pid) {
+  case USB_PID_ACK:
+    pio_usb_bus_usb_transfer(pp, ack_encoded, 5);
+    break;
+
+  case USB_PID_NAK:
+    pio_usb_bus_usb_transfer(pp, nak_encoded, 5);
+    break;
+
+  case USB_PID_STALL:
+  default:
+    pio_usb_bus_usb_transfer(pp, stall_encoded, 5);
+    break;
+  }
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(const pio_port_t *pp,
@@ -105,7 +124,10 @@ void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(const pio_port_t *pp,
   packet[2] = dat & 0xff;
   packet[3] = (crc << 3) | ((dat >> 8) & 0x1f);
 
-  pio_usb_bus_usb_transfer(pp, packet, sizeof(packet));
+  uint8_t packet_encoded[sizeof(packet) * 2 * 7 / 6 + 2];
+  uint8_t encoded_len = pio_usb_ll_encode_tx_data(packet, sizeof(packet), packet_encoded);
+
+  pio_usb_bus_usb_transfer(pp, packet_encoded, encoded_len);
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t *pp) {
@@ -114,10 +136,10 @@ void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t
   pio_sm_restart(pp->pio_usb_rx, pp->sm_rx);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_start_receive)(const pio_port_t *pp) {
-  pp->pio_usb_rx->ctrl |= (1 << pp->sm_rx);
   pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
 }
 
@@ -141,7 +163,7 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp
     }
   }
 
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+ // pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
 
   return pp->usb_rx_buffer[1];
 }
@@ -215,9 +237,13 @@ static __always_inline void add_pio_host_rx_program(PIO pio,
 
 static void __no_inline_not_in_flash_func(initialize_host_programs)(
     pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port) {
-  pp->offset_tx = pio_add_program(pp->pio_usb_tx, pp->fs_tx_program);
-  usb_tx_fs_program_init(pp->pio_usb_tx, pp->sm_tx, pp->offset_tx,
-                         port->pin_dp, port->pin_dm);
+  // TX program should be placed at address 0
+  pio_add_program_at_offset(pp->pio_usb_tx, pp->fs_tx_program, 0);
+  pp->offset_tx = 0;
+  usb_tx_fs_program_init(pp->pio_usb_tx, pp->sm_tx, pp->offset_tx, port->pin_dp,
+                         port->pin_dm);
+  pp->tx_start_instr = pio_encode_jmp(pp->offset_tx + 4);
+  pp->tx_reset_instr = pio_encode_jmp(pp->offset_tx + 2);
 
   add_pio_host_rx_program(pp->pio_usb_rx, &usb_nrzi_decoder_program,
                           &usb_nrzi_decoder_debug_program, &pp->offset_rx,
@@ -274,6 +300,7 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
     pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
     pp->ls_tx_program = &usb_tx_dpdm_program;
   }
+  port->pinout = c->pinout;
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
@@ -303,6 +330,16 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
   port_pin_drive_setting(root);
   root->initialized = true;
   root->dev_addr = 0;
+
+  // pre-encode handshake packets
+  uint8_t raw_packet[] = {USB_SYNC, USB_PID_ACK};
+  pio_usb_ll_encode_tx_data(raw_packet, 2, ack_encoded);
+  raw_packet[1] = USB_PID_NAK;
+  pio_usb_ll_encode_tx_data(raw_packet, 2, nak_encoded);
+  raw_packet[1] = USB_PID_STALL;
+  pio_usb_ll_encode_tx_data(raw_packet, 2, stall_encoded);
+  raw_packet[1] = USB_PID_PRE;
+  pio_usb_ll_encode_tx_data(raw_packet, 2, pre_encoded);
 }
 
 //--------------------------------------------------------------------+
@@ -363,17 +400,89 @@ void __no_inline_not_in_flash_func(pio_usb_ll_configure_endpoint)(
   ep->data_id = 0;
 }
 
+// Encode transfer data to 2bit sequence represents TX PIO instruction address
+uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
+    uint8_t const *buffer, uint8_t buffer_len, uint8_t *encoded_data) {
+  uint16_t bit_idx = 0;
+  int current_state = 1;
+  int bit_stuffing = 6;
+  for (int idx = 0; idx < buffer_len; idx++) {
+    uint8_t byte = buffer[idx];
+    for (int b = 0; b < 8; b++) {
+      uint8_t byte_idx = bit_idx >> 2;
+      encoded_data[byte_idx] <<= 2;
+      if (byte & (1 << b)) {
+        if (current_state) {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
+        } else {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
+        }
+        bit_stuffing--;
+      } else {
+        if (current_state) {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
+          current_state = 0;
+        } else {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
+          current_state = 1;
+        }
+        bit_stuffing = 6;
+      }
+
+      bit_idx++;
+
+      if (bit_stuffing == 0) {
+        byte_idx = bit_idx >> 2;
+        encoded_data[byte_idx] <<= 2;
+
+        if (current_state) {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_J;
+          current_state = 0;
+        } else {
+          encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
+          current_state = 1;
+        }
+        bit_stuffing = 6;
+        bit_idx++;
+      }
+    }
+  }
+
+  uint8_t byte_idx = bit_idx >> 2;
+  encoded_data[byte_idx] <<= 2;
+  encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_SE0;
+  bit_idx++;
+
+  byte_idx = bit_idx >> 2;
+  encoded_data[byte_idx] <<= 2;
+  encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_COMP;
+  bit_idx++;
+
+  do {
+    byte_idx = bit_idx >> 2;
+    encoded_data[byte_idx] <<= 2;
+    encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
+    bit_idx++;
+  } while (bit_idx & 0x07);
+
+  byte_idx = bit_idx >> 2;
+  return byte_idx;
+}
+
 static inline __force_inline void prepare_tx_data(endpoint_t *ep) {
   uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
-  ep->buffer[0] = USB_SYNC;
-  ep->buffer[1] = (ep->data_id == 1)
-                      ? USB_PID_DATA1
-                      : USB_PID_DATA0; // USB_PID_SETUP also DATA0
-  memcpy(ep->buffer + 2, ep->app_buf, xact_len);
+  uint8_t buffer[PIO_USB_EP_SIZE + 4];
+  buffer[0] = USB_SYNC;
+  buffer[1] = (ep->data_id == 1) ? USB_PID_DATA1
+                                 : USB_PID_DATA0; // USB_PID_SETUP also DATA0
+  memcpy(buffer + 2, ep->app_buf, xact_len);
 
   uint16_t const crc16 = calc_usb_crc16(ep->app_buf, xact_len);
-  ep->buffer[2 + xact_len] = crc16 & 0xff;
-  ep->buffer[2 + xact_len + 1] = crc16 >> 8;
+  buffer[2 + xact_len] = crc16 & 0xff;
+  buffer[2 + xact_len + 1] = crc16 >> 8;
+
+  ep->encoded_data_len =
+      pio_usb_ll_encode_tx_data(buffer, xact_len + 4, ep->buffer);
 }
 
 bool __no_inline_not_in_flash_func(pio_usb_ll_transfer_start)(endpoint_t *ep,
@@ -453,6 +562,7 @@ int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
       } else {
         root->pin_dm = pin_dp - 1;
       }
+      root->pinout = pinout;
 
       gpio_pull_down(pin_dp);
       gpio_pull_down(root->pin_dm);

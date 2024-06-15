@@ -73,7 +73,8 @@ typedef struct {
   volatile bool transfer_started;
   volatile bool transfer_aborted;
 
-  uint8_t buffer[64 + 4];
+  uint8_t buffer[(64 + 4) * 2 * 7 / 6 + 2];
+  uint8_t encoded_data_len;
   uint8_t *app_buf;
   uint16_t total_len;
   uint16_t actual_len;
@@ -94,6 +95,7 @@ typedef struct struct_root_port_t {
   volatile uint8_t pin_dm;
   volatile usb_device_event_t event;
   usb_device_t *root_device;
+  PIO_USB_PINOUT pinout;
 
   volatile bool is_fullspeed;
   volatile bool connected;
@@ -105,6 +107,7 @@ typedef struct struct_root_port_t {
   volatile uint32_t ep_complete;
   volatile uint32_t ep_error;
   volatile uint32_t ep_stalled;
+  volatile uint32_t ep_continue;
 
   // device only
   uint8_t dev_addr;
