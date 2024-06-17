@@ -122,7 +122,7 @@ void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(const pio_port_t *pp,
   uint16_t dat = ((uint16_t)(ep_num & 0xf) << 7) | (addr & 0x7f);
   uint8_t crc = calc_usb_crc5(dat);
   packet[2] = dat & 0xff;
-  packet[3] = (crc << 3) | ((dat >> 8) & 0x1f);
+  packet[3] = (crc << 3) | ((ep_num >> 1) & 0x7);
 
   uint8_t packet_encoded[sizeof(packet) * 2 * 7 / 6 + 2];
   uint8_t encoded_len = pio_usb_ll_encode_tx_data(packet, sizeof(packet), packet_encoded);
