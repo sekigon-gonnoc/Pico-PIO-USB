@@ -3,6 +3,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
 #include "pico/stdlib.h"

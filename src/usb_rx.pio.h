@@ -19,6 +19,7 @@
 
 #define usb_edge_detector_wrap_target 3
 #define usb_edge_detector_wrap 9
+#define usb_edge_detector_pio_version 0
 
 static const uint16_t usb_edge_detector_program_instructions[] = {
     0xc022, //  0: irq    wait 2                     
@@ -47,6 +48,10 @@ static const struct pio_program usb_edge_detector_program = {
     .instructions = usb_edge_detector_program_instructions,
     .length = 17,
     .origin = -1,
+    .pio_version = 0,
+#if PICO_PIO_VERSION > 0
+    .used_gpio_ranges = 0x0
+#endif
 };
 
 static inline pio_sm_config usb_edge_detector_program_get_default_config(uint offset) {
@@ -62,6 +67,7 @@ static inline pio_sm_config usb_edge_detector_program_get_default_config(uint of
 
 #define usb_edge_detector_debug_wrap_target 3
 #define usb_edge_detector_debug_wrap 9
+#define usb_edge_detector_debug_pio_version 0
 
 static const uint16_t usb_edge_detector_debug_program_instructions[] = {
     0xc022, //  0: irq    wait 2          side 0     
@@ -90,6 +96,10 @@ static const struct pio_program usb_edge_detector_debug_program = {
     .instructions = usb_edge_detector_debug_program_instructions,
     .length = 17,
     .origin = -1,
+    .pio_version = 0,
+#if PICO_PIO_VERSION > 0
+    .used_gpio_ranges = 0x0
+#endif
 };
 
 static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(uint offset) {
@@ -106,6 +116,7 @@ static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(u
 
 #define usb_nrzi_decoder_wrap_target 0
 #define usb_nrzi_decoder_wrap 6
+#define usb_nrzi_decoder_pio_version 0
 
 static const uint16_t usb_nrzi_decoder_program_instructions[] = {
             //     .wrap_target
@@ -127,6 +138,10 @@ static const struct pio_program usb_nrzi_decoder_program = {
     .instructions = usb_nrzi_decoder_program_instructions,
     .length = 10,
     .origin = -1,
+    .pio_version = 0,
+#if PICO_PIO_VERSION > 0
+    .used_gpio_ranges = 0x0
+#endif
 };
 
 static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint offset) {
@@ -142,6 +157,7 @@ static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint off
 
 #define usb_nrzi_decoder_debug_wrap_target 0
 #define usb_nrzi_decoder_debug_wrap 6
+#define usb_nrzi_decoder_debug_pio_version 0
 
 static const uint16_t usb_nrzi_decoder_debug_program_instructions[] = {
             //     .wrap_target
@@ -163,6 +179,10 @@ static const struct pio_program usb_nrzi_decoder_debug_program = {
     .instructions = usb_nrzi_decoder_debug_program_instructions,
     .length = 10,
     .origin = -1,
+    .pio_version = 0,
+#if PICO_PIO_VERSION > 0
+    .used_gpio_ranges = 0x0
+#endif
 };
 
 static inline pio_sm_config usb_nrzi_decoder_debug_program_get_default_config(uint offset) {
@@ -173,6 +193,13 @@ static inline pio_sm_config usb_nrzi_decoder_debug_program_get_default_config(ui
 }
 
 #include "hardware/clocks.h"
+#if PICO_SDK_VERSION_MAJOR < 2
+static __always_inline void pio_sm_set_jmp_pin(PIO pio, uint sm, uint jmp_pin) {
+  pio->sm[sm].execctrl =
+      (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
+      (jmp_pin << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
+}
+#endif
 static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, uint pin_dm, int pin_debug) {
   if (pin_dp < pin_dm) {
     pio_sm_set_consecutive_pindirs(pio, sm, pin_dp, 2, false);
