@@ -19,7 +19,6 @@
 
 #define usb_edge_detector_wrap_target 3
 #define usb_edge_detector_wrap 9
-#define usb_edge_detector_pio_version 0
 
 static const uint16_t usb_edge_detector_program_instructions[] = {
     0xc022, //  0: irq    wait 2                     
@@ -48,10 +47,6 @@ static const struct pio_program usb_edge_detector_program = {
     .instructions = usb_edge_detector_program_instructions,
     .length = 17,
     .origin = -1,
-    .pio_version = 0,
-#if PICO_PIO_VERSION > 0
-    .used_gpio_ranges = 0x0
-#endif
 };
 
 static inline pio_sm_config usb_edge_detector_program_get_default_config(uint offset) {
@@ -67,7 +62,6 @@ static inline pio_sm_config usb_edge_detector_program_get_default_config(uint of
 
 #define usb_edge_detector_debug_wrap_target 3
 #define usb_edge_detector_debug_wrap 9
-#define usb_edge_detector_debug_pio_version 0
 
 static const uint16_t usb_edge_detector_debug_program_instructions[] = {
     0xc022, //  0: irq    wait 2          side 0     
@@ -96,10 +90,6 @@ static const struct pio_program usb_edge_detector_debug_program = {
     .instructions = usb_edge_detector_debug_program_instructions,
     .length = 17,
     .origin = -1,
-    .pio_version = 0,
-#if PICO_PIO_VERSION > 0
-    .used_gpio_ranges = 0x0
-#endif
 };
 
 static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(uint offset) {
@@ -116,7 +106,6 @@ static inline pio_sm_config usb_edge_detector_debug_program_get_default_config(u
 
 #define usb_nrzi_decoder_wrap_target 0
 #define usb_nrzi_decoder_wrap 6
-#define usb_nrzi_decoder_pio_version 0
 
 static const uint16_t usb_nrzi_decoder_program_instructions[] = {
             //     .wrap_target
@@ -138,10 +127,6 @@ static const struct pio_program usb_nrzi_decoder_program = {
     .instructions = usb_nrzi_decoder_program_instructions,
     .length = 10,
     .origin = -1,
-    .pio_version = 0,
-#if PICO_PIO_VERSION > 0
-    .used_gpio_ranges = 0x0
-#endif
 };
 
 static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint offset) {
@@ -157,7 +142,6 @@ static inline pio_sm_config usb_nrzi_decoder_program_get_default_config(uint off
 
 #define usb_nrzi_decoder_debug_wrap_target 0
 #define usb_nrzi_decoder_debug_wrap 6
-#define usb_nrzi_decoder_debug_pio_version 0
 
 static const uint16_t usb_nrzi_decoder_debug_program_instructions[] = {
             //     .wrap_target
@@ -179,10 +163,6 @@ static const struct pio_program usb_nrzi_decoder_debug_program = {
     .instructions = usb_nrzi_decoder_debug_program_instructions,
     .length = 10,
     .origin = -1,
-    .pio_version = 0,
-#if PICO_PIO_VERSION > 0
-    .used_gpio_ranges = 0x0
-#endif
 };
 
 static inline pio_sm_config usb_nrzi_decoder_debug_program_get_default_config(uint offset) {
