@@ -7,26 +7,40 @@ on:
     types:
       - created
 
+env:
+  PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk_version:
+          - '2.0.0'
+          - '1.5.1'
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
     - name: Install ARM GCC
       uses: carlosperate/arm-none-eabi-gcc-action@v1
       with:
         release: '12.3.Rel1'
 
+    - name: Checkout
+      uses: actions/checkout@v4
+
     - name: Checkout pico-sdk
+      uses: actions/checkout@v4
+      with:
+        repository: raspberrypi/pico-sdk
+        ref: ${{ matrix.sdk_version }}
+        path: pico-sdk
+
+    - name: Checkout TinyUSB
       run: |
-        git clone --depth 1 -b develop https://github.com/raspberrypi/pico-sdk ~/pico-sdk
-        echo >> $GITHUB_ENV PICO_SDK_PATH=~/pico-sdk
         # checkout tinyusb in pico-sdk and switch to master branch
-        git -C ~/pico-sdk submodule update --init
-        git -C ~/pico-sdk/lib/tinyusb fetch
-        git -C ~/pico-sdk/lib/tinyusb checkout master
+        git -C $PICO_SDK_PATH submodule update --init
+        git -C $PICO_SDK_PATH/lib/tinyusb fetch
+        git -C $PICO_SDK_PATH/lib/tinyusb checkout master
 
     - name: Build
       run: |
@@ -36,7 +50,7 @@ jobs:
         cmake ..
         make
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: example_binaries
         path: |
