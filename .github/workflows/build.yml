@@ -52,7 +52,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: example_binaries
+        name: example_binaries-sdk-${{ matrix.sdk_version }}
         path: |
           examples/build/usb_device/usb_device.uf2
           examples/build/usb_device/usb_device.hex
