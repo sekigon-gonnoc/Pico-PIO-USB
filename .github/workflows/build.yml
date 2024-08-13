@@ -7,44 +7,40 @@ on:
     types:
       - created
 
+env:
+  PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk_version:
+          - '2.0.0'
+          - '1.5.1'
     runs-on: ubuntu-latest
     steps:
-    - name: Setup Python
-      uses: actions/setup-python@v3
+    - name: Install ARM GCC
+      uses: carlosperate/arm-none-eabi-gcc-action@v1
+      with:
+        release: '12.3.Rel1'
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Checkout pico-sdk
-      run: |
-        git clone --depth 1 -b develop https://github.com/raspberrypi/pico-sdk ~/pico-sdk
-        echo >> $GITHUB_ENV PICO_SDK_PATH=~/pico-sdk
-        # checkout tinyusb in pico-sdk and switch to PR branch
-        git -C ~/pico-sdk submodule update --init
-        git -C ~/pico-sdk/lib/tinyusb fetch
-        git -C ~/pico-sdk/lib/tinyusb checkout master
-
-    - name: Set Toolchain URL
-      run: echo >> $GITHUB_ENV TOOLCHAIN_URL=https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v10.2.1-1.1/xpack-arm-none-eabi-gcc-10.2.1-1.1-linux-x64.tar.gz
-
-    - name: Cache Toolchain
-      uses: actions/cache@v3
-      id: cache-toolchain
+      uses: actions/checkout@v4
       with:
-        path: ~/cache/
-        key: ${{ runner.os }}-22-05-05-${{ env.TOOLCHAIN_URL }}
+        repository: raspberrypi/pico-sdk
+        ref: ${{ matrix.sdk_version }}
+        path: pico-sdk
 
-    - name: Install Toolchain
-      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+    - name: Checkout TinyUSB
       run: |
-        mkdir -p ~/cache/toolchain
-        wget --progress=dot:mega $TOOLCHAIN_URL -O toolchain.tar.gz
-        tar -C ~/cache/toolchain -xaf toolchain.tar.gz
-
-    - name: Set Toolchain Path
-      run: echo >> $GITHUB_PATH `echo ~/cache/toolchain/*/bin`
+        # checkout tinyusb in pico-sdk and switch to master branch
+        git -C $PICO_SDK_PATH submodule update --init
+        git -C $PICO_SDK_PATH/lib/tinyusb fetch
+        git -C $PICO_SDK_PATH/lib/tinyusb checkout master
 
     - name: Build
       run: |
@@ -54,9 +50,9 @@ jobs:
         cmake ..
         make
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: example_binaries
+        name: example_binaries-sdk-${{ matrix.sdk_version }}
         path: |
           examples/build/usb_device/usb_device.uf2
           examples/build/usb_device/usb_device.hex

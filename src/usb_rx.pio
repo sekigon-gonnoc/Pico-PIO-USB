@@ -156,11 +156,13 @@ J2:
 % c-sdk {
 #include "hardware/clocks.h"
 
+#if PICO_SDK_VERSION_MAJOR < 2
 static __always_inline void pio_sm_set_jmp_pin(PIO pio, uint sm, uint jmp_pin) {
   pio->sm[sm].execctrl =
       (pio->sm[sm].execctrl & ~PIO_SM0_EXECCTRL_JMP_PIN_BITS) |
       (jmp_pin << PIO_SM0_EXECCTRL_JMP_PIN_LSB);
 }
+#endif
 
 static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pin_dp, uint pin_dm, int pin_debug) {
   if (pin_dp < pin_dm) {

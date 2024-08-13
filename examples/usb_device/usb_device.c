@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "hardware/clocks.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "pico/bootrom.h"
