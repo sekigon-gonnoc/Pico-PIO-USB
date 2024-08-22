@@ -33,10 +33,10 @@ pio_port_t pio_port[1];
 root_port_t pio_usb_root_port[PIO_USB_ROOT_PORT_CNT];
 endpoint_t pio_usb_ep_pool[PIO_USB_EP_POOL_CNT];
 
-static uint8_t ack_encoded[5];
-static uint8_t nak_encoded[5];
-static uint8_t stall_encoded[5];
-static uint8_t pre_encoded[5];
+static uint8_t ack_encoded[5+1];
+static uint8_t nak_encoded[5+1];
+static uint8_t stall_encoded[5+1];
+static uint8_t pre_encoded[5+1];
 
 //--------------------------------------------------------------------+
 // Bus functions
