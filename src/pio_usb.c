@@ -458,12 +458,13 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
   encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_COMP;
   bit_idx++;
 
+  // terminate buffers with K
   do {
     byte_idx = bit_idx >> 2;
     encoded_data[byte_idx] <<= 2;
     encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
     bit_idx++;
-  } while (bit_idx & 0x07);
+  } while (bit_idx & 0x03);
 
   byte_idx = bit_idx >> 2;
   return byte_idx;
