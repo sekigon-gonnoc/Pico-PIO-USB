@@ -56,7 +56,5 @@ jobs:
         path: |
           examples/build/usb_device/usb_device.uf2
           examples/build/usb_device/usb_device.hex
-          examples/build/capture_hid_report/capture_hid_report.uf2
-          examples/build/capture_hid_report/capture_hid_report.hex
           examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.uf2
           examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.hex
