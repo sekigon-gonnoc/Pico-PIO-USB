@@ -140,7 +140,7 @@ pio_usb_bus_get_line_state(root_port_t *root) {
   uint8_t dp = gpio_get(root->pin_dp) ? 0 : 1;
   uint8_t dm = gpio_get(root->pin_dm) ? 0 : 1;
 
-  return (dm << 1) | dp;
+  return (port_pin_status_t)((dm << 1) | dp);
 }
 
 //--------------------------------------------------------------------+
