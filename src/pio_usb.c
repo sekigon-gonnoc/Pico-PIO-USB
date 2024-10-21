@@ -198,6 +198,10 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
           crc_prev2 = crc_prev;
           crc_prev = crc;
           crc = update_usb_crc16(crc, data);
+          //check for buffer overflow
+          if(idx > (sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]))){
+            return -1;
+          }
           pp->usb_rx_buffer[idx++] = data;
           crc_receive = (crc_receive >> 8) | (data << 8);
           crc_receive_inverse = crc_receive ^ 0xffff;
