@@ -50,25 +50,34 @@
 
 #ifdef KEYBOARD_COLEMAK
 const uint8_t colemak[128] = {
-  0  ,  0,  0,  0,  0,  0,  0, 22,
-  9  , 23,  7,  0, 24, 17,  8, 12,
-  0  , 14, 28, 51,  0, 19, 21, 10,
-  15 ,  0,  0,  0, 13,  0,  0,  0,
-  0  ,  0,  0,  0,  0,  0,  0,  0,
-  0  ,  0,  0,  0,  0,  0,  0,  0,
-  0  ,  0,  0, 18,  0,  0,  0,  0,
-  0  ,  0,  0,  0,  0,  0,  0,  0,
-  0  ,  0,  0,  0,  0,  0,  0,  0,
-  0  ,  0,  0,  0,  0,  0,  0,  0
-};
+    0, 0, 0, 0, 0, 0, 0, 22,
+    9, 23, 7, 0, 24, 17, 8, 12,
+    0, 14, 28, 51, 0, 19, 21, 10,
+    15, 0, 0, 0, 13, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 18, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0};
 #endif
 
-static uint8_t const keycode2ascii[128][2] =  { HID_KEYCODE_TO_ASCII };
+#define PIN_KEY_2 2
+#define PIN_KEY_3 3
+#define PIN_KEY_4 4
+#define PIN_KEY_5 5
+#define PIN_KEY_6 6
+#define PIN_KEY_7 7
+#define PIN_KEY_8 8
+#define PIN_KEY_9 9
+
+static uint8_t const keycode2ascii[128][2] = {HID_KEYCODE_TO_ASCII};
 
 /*------------- MAIN -------------*/
 
 // core1: handle host events
-void core1_main() {
+void core1_main()
+{
   sleep_ms(10);
 
   // Use tuh_configure() to pass pio configuration to the host stack
@@ -80,13 +89,33 @@ void core1_main() {
   // port1) on core1
   tuh_init(1);
 
-  while (true) {
+  while (true)
+  {
     tuh_task(); // tinyusb host task
   }
 }
 
 // core0: handle device events
-int main(void) {
+int main(void)
+{
+  gpio_init(PIN_KEY_2);
+  gpio_init(PIN_KEY_3);
+  gpio_init(PIN_KEY_4);
+  gpio_init(PIN_KEY_5);
+  gpio_init(PIN_KEY_6);
+  gpio_init(PIN_KEY_7);
+  gpio_init(PIN_KEY_8);
+  gpio_init(PIN_KEY_9);
+
+  gpio_set_dir(PIN_KEY_2, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_3, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_4, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_5, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_6, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_7, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_8, GPIO_OUT);
+  gpio_set_dir(PIN_KEY_9, GPIO_OUT);
+
   // default 125MHz is not appropreate. Sysclock should be multiple of 12MHz.
   set_sys_clock_khz(120000, true);
 
@@ -99,7 +128,8 @@ int main(void) {
   // init device stack on native usb (roothub port0)
   tud_init(0);
 
-  while (true) {
+  while (true)
+  {
     tud_task(); // tinyusb device task
     tud_cdc_write_flush();
   }
@@ -114,13 +144,13 @@ int main(void) {
 // Invoked when CDC interface received data from host
 void tud_cdc_rx_cb(uint8_t itf)
 {
-  (void) itf;
+  (void)itf;
 
   char buf[64];
   uint32_t count = tud_cdc_read(buf, sizeof(buf));
 
   // TODO control LED on keyboard of host stack
-  (void) count;
+  (void)count;
 }
 
 //--------------------------------------------------------------------+
@@ -132,13 +162,13 @@ void tud_cdc_rx_cb(uint8_t itf)
 // can be used to parse common/simple enough descriptor.
 // Note: if report descriptor length > CFG_TUH_ENUMERATION_BUFSIZE, it will be skipped
 // therefore report_desc = NULL, desc_len = 0
-void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_report, uint16_t desc_len)
+void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_report, uint16_t desc_len)
 {
   (void)desc_report;
   (void)desc_len;
 
   // Interface protocol (hid_interface_protocol_enum_t)
-  const char* protocol_str[] = { "None", "Keyboard", "Mouse" };
+  const char *protocol_str[] = {"None", "Keyboard", "Mouse"};
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
   uint16_t vid, pid;
@@ -154,7 +184,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
   // tuh_hid_report_received_cb() will be invoked when report is available
   if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD || itf_protocol == HID_ITF_PROTOCOL_MOUSE)
   {
-    if ( !tuh_hid_receive_report(dev_addr, instance) )
+    if (!tuh_hid_receive_report(dev_addr, instance))
     {
       tud_cdc_write_str("Error: cannot request report\r\n");
     }
@@ -173,67 +203,118 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
 // look up new key in previous keys
 static inline bool find_key_in_report(hid_keyboard_report_t const *report, uint8_t keycode)
 {
-  for(uint8_t i=0; i<6; i++)
+  for (uint8_t i = 0; i < 6; i++)
   {
-    if (report->keycode[i] == keycode)  return true;
+    if (report->keycode[i] == keycode)
+      return true;
   }
 
   return false;
 }
 
+// Функция для установки состояния пинов
+void set_pin_state(uint8_t *key_states, uint8_t length)
+{
+    // Массив для хранения текущих состояний пинов
+    bool pin_states[10] = {false}; // Инициализируем массив состояниями "выключено"
+
+    // Сначала обрабатываем массив состояний клавиш
+    for (uint8_t i = 0; i < length; i++)
+    {
+        char keycode = key_states[i];
+        if (keycode) // Если клавиша активна
+        {
+            switch (keycode)
+            {
+                case '2':
+                    pin_states[5] = true; // 2d 3u 4r 5l 6mh 7lf 8 mf 9lh
+                    break;
+                case '3':
+                    pin_states[2] = true;
+                    break;
+                case '4':
+                    pin_states[4] = true;
+                    break;
+                case '\n': // Код для клавиши Enter
+                case '\r': // Код для возврата каретки (в зависимости от платформы)
+                    pin_states[3] = true; // Включаем состояние пина Enter
+                    break;
+                case '.':
+                case '6':
+                    //pin_states[6] = true;
+                    break;
+                 case '0':
+                    //pin_states[7] = true;
+                    break;
+                case '1':
+                    //pin_states[8] = true;
+                    break;
+                case '5':
+                    //pin_states[9] = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Обновляем состояния пинов в соответствии с массивом состояний
+    gpio_put(PIN_KEY_2, pin_states[2]); // down
+    gpio_put(PIN_KEY_3, pin_states[3]); // up
+    gpio_put(PIN_KEY_4, pin_states[4]); // right
+    gpio_put(PIN_KEY_5, pin_states[5]); // left
+    gpio_put(PIN_KEY_6, pin_states[6]); // M_H
+    gpio_put(PIN_KEY_7, pin_states[7]); // L_F
+    gpio_put(PIN_KEY_8, pin_states[8]); // M_F
+    gpio_put(PIN_KEY_9, pin_states[9]); // L_H
+}
 
 // convert hid keycode to ascii and print via usb device CDC (ignore non-printable)
+#define MAX_KEYS 6
+
 static void process_kbd_report(uint8_t dev_addr, hid_keyboard_report_t const *report)
 {
-  (void) dev_addr;
-  static hid_keyboard_report_t prev_report = { 0, 0, {0} }; // previous report to check key released
-  bool flush = false;
+    (void)dev_addr;
 
-  for(uint8_t i=0; i<6; i++)
-  {
-    uint8_t keycode = report->keycode[i];
-    if ( keycode )
+    //static hid_keyboard_report_t prev_report = {0, 0, {0}};
+    uint8_t key_states[MAX_KEYS] = {0}; // Массив для хранения текущих состояний клавиш
+    uint8_t output_index = 0; // Индекс для выходного массива
+
+    // Очистка предыдущего вывода
+    //tud_cdc_write("\r       \r", 9);
+    tud_cdc_write("\n", 1);
+
+    // Первый цикл: Обработка текущего отчета и обновление состояния клавиш
+    for (uint8_t i = 0; i < MAX_KEYS; i++)
     {
-      if ( find_key_in_report(&prev_report, keycode) )
-      {
-        // exist in previous report means the current key is holding
-      }else
-      {
-        // not existed in previous report means the current key is pressed
-
-        // remap the key code for Colemak layout
-        #ifdef KEYBOARD_COLEMAK
-        uint8_t colemak_key_code = colemak[keycode];
-        if (colemak_key_code != 0) keycode = colemak_key_code;
-        #endif
-
-        bool const is_shift = report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT);
-        uint8_t ch = keycode2ascii[keycode][is_shift ? 1 : 0];
-
-        if (ch)
+        uint8_t keycode = report->keycode[i]; // Используем report вместо hid_keyboard_report_t
+        if (keycode)
         {
-          if (ch == '\n') tud_cdc_write("\r", 1);
-          tud_cdc_write(&ch, 1);
-          flush = true;
+			//bool const is_shift = report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT);
+            //uint8_t ch = keycode2ascii[keycode][is_shift ? 1 : 0];
+            key_states[i] = keycode2ascii[keycode][0];//keycode; // Обновляем состояние клавиши
+            output_index++; // Увеличиваем индекс выходного массива
         }
-      }
     }
-    // TODO example skips key released
-  }
 
-  if (flush) tud_cdc_write_flush();
-
-  prev_report = *report;
+    // Отправляем текущее состояние только если есть символы в выходном массиве
+    if (output_index > 0)
+    {
+        tud_cdc_write(key_states, output_index); // Отправляем только валидную часть выходного массива
+    }
+    set_pin_state(key_states, output_index);
+    tud_cdc_write_flush(); // Сбрасываем данные в CDC
+    //prev_report = *report; // Обновляем предыдущий отчет
 }
 
 // send mouse report to usb device CDC
-static void process_mouse_report(uint8_t dev_addr, hid_mouse_report_t const * report)
+static void process_mouse_report(uint8_t dev_addr, hid_mouse_report_t const *report)
 {
   //------------- button state  -------------//
-  //uint8_t button_changed_mask = report->buttons ^ prev_report.buttons;
-  char l = report->buttons & MOUSE_BUTTON_LEFT   ? 'L' : '-';
+  // uint8_t button_changed_mask = report->buttons ^ prev_report.buttons;
+  char l = report->buttons & MOUSE_BUTTON_LEFT ? 'L' : '-';
   char m = report->buttons & MOUSE_BUTTON_MIDDLE ? 'M' : '-';
-  char r = report->buttons & MOUSE_BUTTON_RIGHT  ? 'R' : '-';
+  char r = report->buttons & MOUSE_BUTTON_RIGHT ? 'R' : '-';
 
   char tempbuf[32];
   int count = sprintf(tempbuf, "[%u] %c%c%c %d %d %d\r\n", dev_addr, l, m, r, report->x, report->y, report->wheel);
@@ -243,26 +324,27 @@ static void process_mouse_report(uint8_t dev_addr, hid_mouse_report_t const * re
 }
 
 // Invoked when received report from device via interrupt endpoint
-void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
+void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *report, uint16_t len)
 {
-  (void) len;
+  (void)len;
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
-  switch(itf_protocol)
+  switch (itf_protocol)
   {
-    case HID_ITF_PROTOCOL_KEYBOARD:
-      process_kbd_report(dev_addr, (hid_keyboard_report_t const*) report );
+  case HID_ITF_PROTOCOL_KEYBOARD:
+    process_kbd_report(dev_addr, (hid_keyboard_report_t const *)report);
     break;
 
-    case HID_ITF_PROTOCOL_MOUSE:
-      process_mouse_report(dev_addr, (hid_mouse_report_t const*) report );
+  case HID_ITF_PROTOCOL_MOUSE:
+    process_mouse_report(dev_addr, (hid_mouse_report_t const *)report);
     break;
 
-    default: break;
+  default:
+    break;
   }
 
   // continue to request to receive report
-  if ( !tuh_hid_receive_report(dev_addr, instance) )
+  if (!tuh_hid_receive_report(dev_addr, instance))
   {
     tud_cdc_write_str("Error: cannot request report\r\n");
   }
