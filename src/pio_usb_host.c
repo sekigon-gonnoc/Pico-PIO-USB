@@ -3,9 +3,6 @@
  *                    Ha Thach (thach@tinyusb.org)
  */
 
-#pragma GCC push_options
-#pragma GCC optimize("-O3")
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,6 +17,9 @@
 #include "usb_crc.h"
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
+
+GCC_Pragma("GCC push_options")
+GCC_Pragma("GCC optimize(\"O3\")")
 
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
@@ -401,7 +401,7 @@ void pio_usb_host_close_device(uint8_t root_idx, uint8_t device_address) {
   }
 }
 
-static inline __force_inline endpoint_t * _find_ep(uint8_t root_idx, 
+static __force_inline endpoint_t * _find_ep(uint8_t root_idx,
                                                    uint8_t device_address, uint8_t ep_address) {
   for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
     endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
@@ -1367,4 +1367,5 @@ static void __no_inline_not_in_flash_func(__pio_usb_host_irq_handler)(uint8_t ro
 // weak alias to __pio_usb_host_irq_handler
 void pio_usb_host_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_host_irq_handler")));
 
-#pragma GCC pop_options
+GCC_Pragma("GCC pop_options")
+
