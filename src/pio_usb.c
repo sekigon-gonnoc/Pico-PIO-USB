@@ -178,6 +178,8 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   bool crc_match = false;
   int16_t t = 240;
   uint16_t idx = 0;
+  uint16_t nak_timeout = 10000;
+  const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
 
   while (t--) {
     if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
@@ -192,7 +194,7 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // timing critical start
   if (t > 0) {
     if (handshake == USB_PID_ACK) {
-      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
+      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0 && idx < rx_buf_len - 1) {
         if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
           uint8_t data = pio_sm_get(pp->pio_usb_rx, pp->sm_rx) >> 24;
           crc_prev2 = crc_prev;
@@ -212,7 +214,7 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       }
     } else {
       // just discard received data since we NAK/STALL anyway
-      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
+      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0 && nak_timeout--) {
         continue;
       }
       pio_sm_clear_fifos(pp->pio_usb_rx, pp->sm_rx);
