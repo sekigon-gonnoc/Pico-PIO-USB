@@ -306,7 +306,7 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
     pp->ls_tx_program = &usb_tx_dpdm_program;
   }
 
-#if PICO_PIO_USE_GPIO_BASE
+#if defined(PICO_PIO_USE_GPIO_BASE) && PICO_PIO_USE_GPIO_BASE+0
   if (highest_pin > 32) {
     pio_set_gpio_base(pp->pio_usb_tx, 16);
     pio_set_gpio_base(pp->pio_usb_rx, 16);

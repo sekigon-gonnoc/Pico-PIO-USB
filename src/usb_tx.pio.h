@@ -138,6 +138,7 @@ static inline pio_sm_config usb_tx_pre_dmdp_program_get_default_config(uint offs
 }
 
 #include "hardware/clocks.h"
+#include "sdk_compat.h"
   static void __no_inline_not_in_flash_func(usb_tx_configure_pins)(PIO pio, uint sm, uint pin_dp, uint pin_dm) {
     if (pin_dp < pin_dm) {
       pio_sm_set_out_pins(pio, sm, pin_dp, 2);

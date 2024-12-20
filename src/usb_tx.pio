@@ -91,6 +91,7 @@ set pindirs, 0b11   side FJ_LK
 
 % c-sdk {
 #include "hardware/clocks.h"
+#include "sdk_compat.h"
 
   static void __no_inline_not_in_flash_func(usb_tx_configure_pins)(PIO pio, uint sm, uint pin_dp, uint pin_dm) {
     if (pin_dp < pin_dm) {
