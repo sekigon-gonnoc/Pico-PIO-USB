@@ -151,7 +151,7 @@ static inline pio_sm_config usb_tx_pre_dmdp_program_get_default_config(uint offs
   }
   static inline void usb_tx_fs_program_init(PIO pio, uint sm, uint offset,
                                          uint pin_dp, uint pin_dm) {
-    pio_sm_set_pins_with_mask(pio, sm, (1 << pin_dp), ((1 << pin_dp) | (1 << pin_dm)));
+    pio_sm_set_pins_with_mask64(pio, sm, (1ull << pin_dp), ((1ull << pin_dp) | (1ull << pin_dm)));
     gpio_pull_down(pin_dp);
     gpio_pull_down(pin_dm);
     pio_gpio_init(pio, pin_dp);
@@ -170,7 +170,7 @@ static inline pio_sm_config usb_tx_pre_dmdp_program_get_default_config(uint offs
   }
   static inline void usb_tx_ls_program_init(PIO pio, uint sm, uint offset,
                                          uint pin_dp, uint pin_dm) {
-    pio_sm_set_pins_with_mask(pio, sm, (1 << pin_dm), ((1 << pin_dp) | (1 << pin_dm)));
+    pio_sm_set_pins_with_mask64(pio, sm, (1ull << pin_dm), ((1ull << pin_dp) | (1ull << pin_dm)));
     gpio_pull_down(pin_dp);
     gpio_pull_down(pin_dm);
     pio_gpio_init(pio, pin_dp);

@@ -195,8 +195,8 @@ static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pi
     c = usb_nrzi_decoder_program_get_default_config(offset);
   } else {
     c = usb_nrzi_decoder_debug_program_get_default_config(offset);
-    pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
-    pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
+    pio_sm_set_pins_with_mask64(pio, sm, 0, 1ull << pin_debug);
+    pio_sm_set_pindirs_with_mask64(pio, sm, 1ull << pin_debug, 1ull << pin_debug);
     pio_gpio_init(pio, pin_debug);
     sm_config_set_sideset_pins(&c, pin_debug);
   }
@@ -216,8 +216,8 @@ static inline void eop_detect_fs_program_init(PIO pio, uint sm, uint offset,
     c = usb_edge_detector_program_get_default_config(offset);
   } else {
     c = usb_edge_detector_debug_program_get_default_config(offset);
-    pio_sm_set_pins_with_mask(pio, sm, 0, 1 << pin_debug);
-    pio_sm_set_pindirs_with_mask(pio, sm, 1 << pin_debug, 1 << pin_debug);
+    pio_sm_set_pins_with_mask64(pio, sm, 0, 1ull << pin_debug);
+    pio_sm_set_pindirs_with_mask64(pio, sm, 1ull << pin_debug, 1ull << pin_debug);
     pio_gpio_init(pio, pin_debug);
     sm_config_set_sideset_pins(&c, pin_debug);
   }

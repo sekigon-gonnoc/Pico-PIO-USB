@@ -291,17 +291,30 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
   pp->sm_eop = c->sm_eop;
   port->pin_dp = c->pin_dp;
 
+  uint highest_pin;
   if (c->pinout == PIO_USB_PINOUT_DPDM) {
     port->pin_dm = c->pin_dp + 1;
+    highest_pin = port->pin_dm;
     pp->fs_tx_program = &usb_tx_dpdm_program;
     pp->fs_tx_pre_program = &usb_tx_pre_dpdm_program;
     pp->ls_tx_program = &usb_tx_dmdp_program;
   } else {
     port->pin_dm = c->pin_dp - 1;
+    highest_pin = port->pin_dp;
     pp->fs_tx_program = &usb_tx_dmdp_program;
     pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
     pp->ls_tx_program = &usb_tx_dpdm_program;
   }
+
+#if PICO_PIO_USE_GPIO_BASE
+  if (highest_pin > 32) {
+    pio_set_gpio_base(pp->pio_usb_tx, 16);
+    pio_set_gpio_base(pp->pio_usb_rx, 16);
+  }
+#else
+  (void)highest_pin;
+#endif
+
   port->pinout = c->pinout;
 
   pp->debug_pin_rx = c->debug_pin_rx;
@@ -573,8 +586,8 @@ int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
       pio_gpio_init(pio_port[0].pio_usb_tx, root->pin_dm);
       gpio_set_inover(pin_dp, GPIO_OVERRIDE_INVERT);
       gpio_set_inover(root->pin_dm, GPIO_OVERRIDE_INVERT);
-      pio_sm_set_pindirs_with_mask(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
-                                   (1 << pin_dp) | (1 << root->pin_dm));
+      pio_sm_set_pindirs_with_mask64(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
+                                   (1ull << pin_dp) | (1ull << root->pin_dm));
       port_pin_drive_setting(root);
       root->initialized = true;
 
