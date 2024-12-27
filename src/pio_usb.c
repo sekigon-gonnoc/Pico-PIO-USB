@@ -178,6 +178,8 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   bool crc_match = false;
   int16_t t = 240;
   uint16_t idx = 0;
+  uint16_t nak_timeout = 10000;
+  const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
 
   while (t--) {
     if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
@@ -192,7 +194,7 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // timing critical start
   if (t > 0) {
     if (handshake == USB_PID_ACK) {
-      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
+      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0 && idx < rx_buf_len - 1) {
         if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
           uint8_t data = pio_sm_get(pp->pio_usb_rx, pp->sm_rx) >> 24;
           crc_prev2 = crc_prev;
@@ -212,7 +214,7 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       }
     } else {
       // just discard received data since we NAK/STALL anyway
-      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
+      while ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0 && nak_timeout--) {
         continue;
       }
       pio_sm_clear_fifos(pp->pio_usb_rx, pp->sm_rx);
@@ -289,17 +291,30 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
   pp->sm_eop = c->sm_eop;
   port->pin_dp = c->pin_dp;
 
+  uint highest_pin;
   if (c->pinout == PIO_USB_PINOUT_DPDM) {
     port->pin_dm = c->pin_dp + 1;
+    highest_pin = port->pin_dm;
     pp->fs_tx_program = &usb_tx_dpdm_program;
     pp->fs_tx_pre_program = &usb_tx_pre_dpdm_program;
     pp->ls_tx_program = &usb_tx_dmdp_program;
   } else {
     port->pin_dm = c->pin_dp - 1;
+    highest_pin = port->pin_dp;
     pp->fs_tx_program = &usb_tx_dmdp_program;
     pp->fs_tx_pre_program = &usb_tx_pre_dmdp_program;
     pp->ls_tx_program = &usb_tx_dpdm_program;
   }
+
+#if defined(PICO_PIO_USE_GPIO_BASE) && PICO_PIO_USE_GPIO_BASE+0
+  if (highest_pin > 32) {
+    pio_set_gpio_base(pp->pio_usb_tx, 16);
+    pio_set_gpio_base(pp->pio_usb_rx, 16);
+  }
+#else
+  (void)highest_pin;
+#endif
+
   port->pinout = c->pinout;
 
   pp->debug_pin_rx = c->debug_pin_rx;
@@ -458,12 +473,13 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
   encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_COMP;
   bit_idx++;
 
+  // terminate buffers with K
   do {
     byte_idx = bit_idx >> 2;
     encoded_data[byte_idx] <<= 2;
     encoded_data[byte_idx] |= PIO_USB_TX_ENCODED_DATA_K;
     bit_idx++;
-  } while (bit_idx & 0x07);
+  } while (bit_idx & 0x03);
 
   byte_idx = bit_idx >> 2;
   return byte_idx;
@@ -570,8 +586,8 @@ int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
       pio_gpio_init(pio_port[0].pio_usb_tx, root->pin_dm);
       gpio_set_inover(pin_dp, GPIO_OVERRIDE_INVERT);
       gpio_set_inover(root->pin_dm, GPIO_OVERRIDE_INVERT);
-      pio_sm_set_pindirs_with_mask(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
-                                   (1 << pin_dp) | (1 << root->pin_dm));
+      pio_sm_set_pindirs_with_mask64(pio_port[0].pio_usb_tx, pio_port[0].sm_tx, 0,
+                                   (1ull << pin_dp) | (1ull << root->pin_dm));
       port_pin_drive_setting(root);
       root->initialized = true;
 
