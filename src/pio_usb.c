@@ -283,10 +283,10 @@ static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
 
 static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
                          root_port_t *port) {
-  pp->pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
+  pp->pio_usb_tx = pio_get_instance(c->pio_tx_num);
   pp->sm_tx = c->sm_tx;
   pp->tx_ch = c->tx_ch;
-  pp->pio_usb_rx = c->pio_rx_num == 0 ? pio0 : pio1;
+  pp->pio_usb_rx = pio_get_instance(c->pio_rx_num);
   pp->sm_rx = c->sm_rx;
   pp->sm_eop = c->sm_eop;
   port->pin_dp = c->pin_dp;
@@ -336,7 +336,7 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
                       root_port_t *root) {
   memset(root, 0, sizeof(root_port_t));
 
-  pp->pio_usb_tx = c->pio_tx_num == 0 ? pio0 : pio1;
+  pp->pio_usb_tx = pio_get_instance(c->pio_tx_num);
   dma_claim_mask(1<<c->tx_ch);
   configure_tx_channel(c->tx_ch, pp->pio_usb_tx, c->sm_tx);
 
