@@ -21,6 +21,10 @@
 #include "usb_rx.pio.h"
 #include "usb_tx.pio.h"
 
+enum {
+  TRANSACTION_MAX_RETRY = 3, // Number of times to retry a failed transaction
+};
+
 static alarm_pool_t *_alarm_pool = NULL;
 static repeating_timer_t sof_rt;
 // The sof_count may be incremented and then read on different cores.
@@ -535,7 +539,14 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
     if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
       res = -2;
     }
-    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+
+    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS); // failed after 3 consecutive retries
+    }
+  }
+
+  if (res == 0) {
+    ep->failed_count = 0; // reset failed count if we got a sound response
   }
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
@@ -569,7 +580,14 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
   } else if (receive_token == USB_PID_STALL) {
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
-    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    res = -1;
+    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    }
+  }
+
+  if (res == 0) {
+    ep->failed_count = 0;// reset failed count if we got a sound response
   }
 
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
@@ -581,7 +599,6 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
 
 static int __no_inline_not_in_flash_func(usb_setup_transaction)(
     pio_port_t *pp,  endpoint_t *ep) {
-
   int res = 0;
 
   // Setup token
@@ -604,7 +621,13 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
   } else {
     res = -1;
-    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    }
+  }
+
+  if (res == 0) {
+    ep->failed_count = 0;// reset failed count if we got a sound response
   }
 
   pp->usb_rx_buffer[1] = 0; // reset buffer
