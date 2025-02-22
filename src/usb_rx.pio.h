@@ -33,9 +33,9 @@ static const uint16_t usb_edge_detector_program_instructions[] = {
     0x00cc, //  8: jmp    pin, 12                    
     0x00cc, //  9: jmp    pin, 12                    
             //     .wrap
-    0xa226, // 10: mov    x, isr                 [2] 
+    0xa126, // 10: mov    x, isr                 [2] 
     0x0040, // 11: jmp    x--, 0                     
-    0xa0c3, // 12: mov    isr, null                  
+    0xa1c3, // 12: mov    isr, null                  
     0x4001, // 13: in     pins, 1                    
     0xc004, // 14: irq    nowait 4                   
     0x00ca, // 15: jmp    pin, 10                    
@@ -76,9 +76,9 @@ static const uint16_t usb_edge_detector_debug_program_instructions[] = {
     0x10cc, //  8: jmp    pin, 12         side 1     
     0x10cc, //  9: jmp    pin, 12         side 1     
             //     .wrap
-    0xb226, // 10: mov    x, isr          side 1 [2] 
+    0xb126, // 10: mov    x, isr          side 1 [1] 
     0x1040, // 11: jmp    x--, 0          side 1     
-    0xb0c3, // 12: mov    isr, null       side 1     
+    0xb1c3, // 12: mov    isr, null       side 1 [1] 
     0x4001, // 13: in     pins, 1         side 0     
     0xc004, // 14: irq    nowait 4        side 0     
     0x00ca, // 15: jmp    pin, 10         side 0     
@@ -196,7 +196,7 @@ static inline void usb_rx_fs_program_init(PIO pio, uint sm, uint offset, uint pi
   }
   sm_config_set_in_pins(&c, pin_dp);  // for WAIT, IN
   sm_config_set_jmp_pin(&c, pin_dp);  // for JMP
-  // Shift to right, autopull enabled, 8bit
+  // Shift to right, autopush enabled, 8bit
   sm_config_set_in_shift(&c, true, true, 8);
   sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
   pio_sm_init(pio, sm, offset, &c);

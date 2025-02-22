@@ -41,11 +41,11 @@ pin_went_low:
 .wrap
 
 pin_still_high:
-    mov x, isr [2] 
+    mov x, isr [1] 
     jmp x-- eop	     		    ; Jump to eop if jmp_pin and in_pin are high because both inputs are inverted
 ; Jump to here on rising edge
 pin_went_high:
-    mov isr, null
+    mov isr, null [1]
     in pins, 1                  ; Capture the pin to check eop.
     irq DECODER_TRIGGER			; Trigger NRZI decoder
     jmp pin pin_still_high
@@ -75,11 +75,11 @@ pin_went_low:
 .wrap
 
 pin_still_high:
-    mov x, isr [2] 			side db1
+    mov x, isr [1] 			side db1
     jmp x-- eop	     		side db1     ; Jump to eop if jmp_pin and in_pin are high because both inputs are inverted
 ; Jump to here on rising edge
 pin_went_high:
-    mov isr, null			side db1
+    mov isr, null [1]		side db1
     in pins, 1				side db0     ; Capture the pin to check eop.
     irq DECODER_TRIGGER		side db0     ; Trigger NRZI decoder
     jmp pin pin_still_high  side db0
