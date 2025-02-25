@@ -615,12 +615,12 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
   pio_usb_bus_wait_handshake(pp);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
 
-  ep->actual_len = 8;
-
   if (pp->usb_rx_buffer[0] == USB_SYNC && pp->usb_rx_buffer[1] == USB_PID_ACK) {
+    ep->actual_len = 8;
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
   } else {
     res = -1;
+    ep->data_id = USB_PID_SETUP; // retry setup
     if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
     }
