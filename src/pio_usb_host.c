@@ -540,7 +540,7 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
       res = -2;
     }
 
-    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+    if (++ep->failed_count >= TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS); // failed after 3 consecutive retries
     }
   }
@@ -581,7 +581,7 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
     res = -1;
-    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+    if (++ep->failed_count >= TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
     }
   }
@@ -621,7 +621,7 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
   } else {
     res = -1;
     ep->data_id = USB_PID_SETUP; // retry setup
-    if (++ep->failed_count > TRANSACTION_MAX_RETRY) {
+    if (++ep->failed_count >= TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
     }
   }
