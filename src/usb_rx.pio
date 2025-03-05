@@ -32,8 +32,8 @@ pin_still_low:
 ; Resync on rising edge
 pin_low:
     jmp pin pin_went_high
-pin_went_low:
     jmp pin pin_went_high
+pin_went_low:
     jmp pin pin_went_high
     jmp pin pin_went_high
     jmp pin pin_went_high
@@ -46,8 +46,8 @@ pin_still_high:
 ; Jump to here on rising edge
 pin_went_high:
     mov isr, null [1]
+    irq DECODER_TRIGGER         ; Trigger NRZI decoder
     in pins, 1                  ; Capture the pin to check eop.
-    irq DECODER_TRIGGER			; Trigger NRZI decoder
     jmp pin pin_still_high
     jmp pin_went_low            ; To adjust interval of decoder trigger, jump to pin_went_low (not pin_low)
 
@@ -66,8 +66,8 @@ pin_still_low:
 ; Resync on rising edge
 pin_low:
     jmp pin pin_went_high   side db1
-pin_went_low:
     jmp pin pin_went_high   side db1
+pin_went_low:
     jmp pin pin_went_high   side db1
     jmp pin pin_went_high   side db1
     jmp pin pin_went_high   side db1
@@ -80,8 +80,8 @@ pin_still_high:
 ; Jump to here on rising edge
 pin_went_high:
     mov isr, null [1]		side db1
+    irq DECODER_TRIGGER     side db0     ; Trigger NRZI decoder
     in pins, 1				side db0     ; Capture the pin to check eop.
-    irq DECODER_TRIGGER		side db0     ; Trigger NRZI decoder
     jmp pin pin_still_high  side db0
     jmp pin_went_low 		side db1     ; To adjust interval of decoder trigger, jump to pin_went_low (not pin_low)
 
