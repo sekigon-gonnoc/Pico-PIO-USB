@@ -16,6 +16,7 @@
 
 #define usb_tx_dpdm_wrap_target 1
 #define usb_tx_dpdm_wrap 4
+#define usb_tx_dpdm_FJ_LK 1
 
 static const uint16_t __not_in_flash("tx_program") usb_tx_dpdm_program_instructions[] = {
     0xc700, //  0: irq    nowait 0        side 0 [7] 
@@ -80,6 +81,7 @@ static inline pio_sm_config usb_tx_pre_dpdm_program_get_default_config(uint offs
 
 #define usb_tx_dmdp_wrap_target 1
 #define usb_tx_dmdp_wrap 4
+#define usb_tx_dmdp_FJ_LK 2
 
 static const uint16_t __not_in_flash("tx_program") usb_tx_dmdp_program_instructions[] = {
     0xc700, //  0: irq    nowait 0        side 0 [7] 
