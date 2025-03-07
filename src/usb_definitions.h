@@ -75,6 +75,8 @@ typedef struct {
 
   uint8_t buffer[(64 + 4) * 2 * 7 / 6 + 2];
   uint8_t encoded_data_len;
+  uint8_t failed_count;
+
   uint8_t *app_buf;
   uint16_t total_len;
   uint16_t actual_len;
