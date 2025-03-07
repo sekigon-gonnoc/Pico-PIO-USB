@@ -144,7 +144,7 @@ void __no_inline_not_in_flash_func(pio_usb_bus_start_receive)(const pio_port_t *
 }
 
 uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp) {
-  int16_t t = 240;
+  int16_t t = 240*4;
   int16_t idx = 0;
 
   while (t--) {
@@ -176,9 +176,9 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   uint16_t crc_receive = 0xffff;
   uint16_t crc_receive_inverse;
   bool crc_match = false;
-  int16_t t = 240;
+  int16_t t = 240*4;
   uint16_t idx = 0;
-  uint16_t nak_timeout = 10000;
+  uint32_t nak_timeout = 40000;
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
 
   while (t--) {
