@@ -443,6 +443,17 @@ bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
   return false;
 }
 
+bool pio_usb_host_endpoint_close(uint8_t root_idx, uint8_t device_address,
+                                 uint8_t ep_address) {
+  endpoint_t *ep = _find_ep(root_idx, device_address, ep_address);
+  if (!ep) {
+    return false; // endpoint not opened
+  }
+
+  ep->size = 0; // mark as closed
+  return true;
+}
+
 bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
                              uint8_t const setup_packet[8]) {
   endpoint_t *ep = _find_ep(root_idx, device_address, 0);
