@@ -45,7 +45,11 @@ int main() {
     scanf("%c", &c);
 
     if (c == 'b') {
+#ifdef PICO_DEFAULT_LED_PIN
       reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
+#else
+      reset_usb_boot(0, 0);
+#endif
     }
 
     {
