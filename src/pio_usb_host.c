@@ -424,6 +424,9 @@ static inline __force_inline endpoint_t * _find_ep(uint8_t root_idx,
 bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
                                 uint8_t const *desc_endpoint, bool need_pre) {
   const endpoint_descriptor_t *d = (const endpoint_descriptor_t *)desc_endpoint;
+  if (NULL != _find_ep(root_idx, device_address, d->epaddr)) {
+    return false; // endpoint already opened
+  }
   for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
     endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
     // ep size is used as valid indicator
@@ -438,6 +441,17 @@ bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
   }
 
   return false;
+}
+
+bool pio_usb_host_endpoint_close(uint8_t root_idx, uint8_t device_address,
+                                 uint8_t ep_address) {
+  endpoint_t *ep = _find_ep(root_idx, device_address, ep_address);
+  if (!ep) {
+    return false; // endpoint not opened
+  }
+
+  ep->size = 0; // mark as closed
+  return true;
 }
 
 bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
