@@ -195,6 +195,8 @@ void pio_usb_host_close_device(uint8_t root_idx, uint8_t device_address);
 
 bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
                                 uint8_t const *desc_endpoint, bool need_pre);
+bool pio_usb_host_endpoint_close(uint8_t root_idx, uint8_t device_address,
+                                 uint8_t ep_address);
 bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
                              uint8_t const setup_packet[8]);
 bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
