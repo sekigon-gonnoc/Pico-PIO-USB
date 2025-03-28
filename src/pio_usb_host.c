@@ -212,8 +212,8 @@ static void __no_inline_not_in_flash_func(restore_fs_bus)(pio_port_t *pp) {
 
 // Time about 1us ourselves so it lives in RAM.
 static void __not_in_flash_func(busy_wait_1_us)(void) {
-  uint32_t start = time_us_32();
-  while (time_us_32() == start) {
+  uint32_t start = get_time_us_32();
+  while (get_time_us_32() == start) {
       tight_loop_contents();
   }
 }
