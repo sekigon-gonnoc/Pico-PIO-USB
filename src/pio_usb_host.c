@@ -66,7 +66,6 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
 
   pio_usb_bus_init(pp, c, root);
   root->mode = PIO_USB_MODE_HOST;
-  pp->host = true;
 
   float const cpu_freq = (float)clock_get_hz(clk_sys);
   pio_calculate_clkdiv_from_float(cpu_freq / 48000000,
