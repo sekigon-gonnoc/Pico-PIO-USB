@@ -10,8 +10,8 @@
 #include "usb_definitions.h"
 #include <stdint.h>
 
-#include <usb_tx.pio.h>
-#include <usb_rx.pio.h>
+#include "usb_tx.pio.h"
+#include "usb_rx.pio.h"
 
 enum {
   PIO_USB_INTS_CONNECT_POS = 0,
@@ -84,7 +84,6 @@ typedef struct {
 
   bool need_pre;
   bool low_speed;
-  bool host;
 
   uint8_t usb_rx_buffer[128];
 } pio_port_t;

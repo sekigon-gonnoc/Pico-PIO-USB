@@ -15,7 +15,8 @@
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
 
-#include <usb_rx.pio.h>
+#include "usb_rx.pio.h"
+#include "usb_tx.pio.h"
 
 #include "hardware/dma.h"
 #include "hardware/irq.h"
@@ -256,7 +257,6 @@ usb_device_t *pio_usb_device_init(const pio_usb_configuration_t *c,
   pio_usb_bus_init(pp, c, rport);
   gpio_disable_pulls(rport->pin_dp); // needs external pull-up 
   rport->mode = PIO_USB_MODE_DEVICE;
-  pp->host = false;
 
   memset(dev, 0, sizeof(*dev));
   for (int i = 0; i < PIO_USB_DEV_EP_CNT; i++) {
