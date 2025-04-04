@@ -18,8 +18,6 @@
 #include "pio_usb.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
-#include "usb_rx.pio.h"
-#include "usb_tx.pio.h"
 
 enum {
   TRANSACTION_MAX_RETRY = 3, // Number of times to retry a failed transaction
@@ -152,6 +150,7 @@ __no_inline_not_in_flash_func(configure_tx_program)(pio_port_t *pp,
 
 static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
     pio_port_t *pp, root_port_t *port) {
+  pp->low_speed = false;
   configure_tx_program(pp, port);
   pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
   override_pio_program(pp->pio_usb_tx, pp->fs_tx_program, pp->offset_tx);
@@ -169,6 +168,7 @@ static void __no_inline_not_in_flash_func(configure_fullspeed_host)(
 
 static void __no_inline_not_in_flash_func(configure_lowspeed_host)(
     pio_port_t *pp, root_port_t *port) {
+  pp->low_speed = true;
   configure_tx_program(pp, port);
   pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
   override_pio_program(pp->pio_usb_tx, pp->ls_tx_program, pp->offset_tx);
@@ -193,8 +193,9 @@ static void __no_inline_not_in_flash_func(configure_root_port)(
   }
 }
 
-static void __no_inline_not_in_flash_func(restore_fs_bus)(const pio_port_t *pp) {
+static void __no_inline_not_in_flash_func(restore_fs_bus)(pio_port_t *pp) {
   // change bus speed to full-speed
+  pp->low_speed = false;
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
   SM_SET_CLKDIV(pp->pio_usb_tx, pp->sm_tx, pp->clk_div_fs_tx);
   pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
@@ -210,8 +211,8 @@ static void __no_inline_not_in_flash_func(restore_fs_bus)(const pio_port_t *pp) 
 
 // Time about 1us ourselves so it lives in RAM.
 static void __not_in_flash_func(busy_wait_1_us)(void) {
-  uint32_t start = timer_hw->timerawl;
-  while (timer_hw->timerawl == start) {
+  uint32_t start = get_time_us_32();
+  while (get_time_us_32() == start) {
       tight_loop_contents();
   }
 }
