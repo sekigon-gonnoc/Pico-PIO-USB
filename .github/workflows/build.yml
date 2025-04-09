@@ -15,10 +15,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        board:
+          - 'pico'
+          - 'pico2'
         sdk_version:
           - '2.1.0'
           - '2.0.0'
           - '1.5.1'
+        exclude:
+          # pico2 is supported from sdk 2.0.0
+          - sdk_version: '1.5.1'
+            board: 'pico2'
     runs-on: ubuntu-latest
     steps:
     - name: Install ARM GCC
@@ -45,17 +52,56 @@ jobs:
 
     - name: Build
       run: |
-        cd examples
-        mkdir build
-        cd build
-        cmake ..
+        mkdir -p examples/build
+        cd examples/build
+        cmake -DPICO_BOARD=${{ matrix.board }} ..
         make
 
     - uses: actions/upload-artifact@v4
       with:
-        name: example_binaries-sdk-${{ matrix.sdk_version }}
+        name: example_binaries-${{ matrix.board }}-sdk-${{ matrix.sdk_version }}
         path: |
           examples/build/usb_device/usb_device.uf2
           examples/build/usb_device/usb_device.hex
           examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.uf2
           examples/build/host_hid_to_device_cdc/host_hid_to_device_cdc.hex
+
+  build-arduino:
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - 'rpipico'
+          - 'rpipico2'
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        run: |
+          # make all our directories we need for files and libraries
+          mkdir $HOME/.arduino15
+          mkdir $HOME/.arduino15/packages
+          mkdir $HOME/Arduino
+          mkdir $HOME/Arduino/libraries
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          echo $GITHUB_WORKSPACE/bin >> $GITHUB_PATH
+
+      - name: Install BSP and Libraries
+        env:
+          BSP_URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index
+          arduino-cli core update-index --additional-urls $BSP_URL
+          arduino-cli core install rp2040:rp2040 --additional-urls $BSP_URL
+          arduino-cli lib install "Adafruit TinyUSB Library"
+          # symlink our to libraries folder
+          ln -s $GITHUB_WORKSPACE $HOME/Arduino/libraries/
+          # Library summary
+          arduino-cli lib list
+
+      - name: Build
+        run: arduino-cli compile --fqbn rp2040:rp2040:${{ matrix.board }}:usbstack=tinyusb examples/arduino/device_info
