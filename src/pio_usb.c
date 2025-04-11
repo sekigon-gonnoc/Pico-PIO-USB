@@ -174,23 +174,18 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp
   // This is to detect packets without an EOP because the device was unplugged.
   uint32_t start = get_time_us_32();
   while (get_time_us_32() - start <= 7) {
-    if (pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
+    if (idx < 2 && pio_sm_get_rx_fifo_level(pp->pio_usb_rx, pp->sm_rx)) {
       uint8_t data = pio_sm_get(pp->pio_usb_rx, pp->sm_rx) >> 24;
       pp->usb_rx_buffer[idx++] = data;
 
       start = get_time_us_32(); // reset timeout when a byte is received
-      if (idx == 2) {
-        break;
-      }
     } else if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) != 0) {
-      // Exit early if we've gotten an EOP. There *might* be a race between EOP
-      // detection and NRZI decoding but it is unlikely.
-      break;
+      break; // exit if we've gotten an EOP
     }
   }
 
-  if (idx != 2) {
-    return 0;
+  if (idx != 2 || pp->usb_rx_buffer[0] != USB_SYNC) {
+    return 0; // invalid handshake
   }
 
   return pp->usb_rx_buffer[1];
