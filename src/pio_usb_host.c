@@ -618,7 +618,6 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 
   // Setup token
   pio_usb_bus_prepare_receive(pp);
-
   pio_usb_bus_send_token(pp, USB_PID_SETUP, ep->dev_addr, 0);
 
   // Data
@@ -627,10 +626,10 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 
   // Handshake
   pio_usb_bus_start_receive(pp);
-  pio_usb_bus_wait_handshake(pp);
+  const uint8_t handshake = pio_usb_bus_wait_handshake(pp);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
 
-  if (pp->usb_rx_buffer[0] == USB_SYNC && pp->usb_rx_buffer[1] == USB_PID_ACK) {
+  if (handshake == USB_PID_ACK) {
     ep->actual_len = 8;
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
   } else {
