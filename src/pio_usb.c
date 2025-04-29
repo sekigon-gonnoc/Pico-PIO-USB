@@ -97,7 +97,7 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(pio_port_t *pp,
     continue;
   }
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
-  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
+  while (*pc <= PIO_USB_TX_ENCODED_DATA_COMP) {
     continue;
   }
 }
@@ -206,6 +206,19 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
   int16_t idx = 0;
 
+  // Per USB Specs 7.1.18 for turnaround: We must wait at least 2 bit times for inter-packet delay.
+  // This is essential for working with LS device specially when we overlocked the mcu.
+  // Pre-calculate number of cycle per bit time
+  // - Lowspeed: 1 bit time = (cpufreq / 1.5 Mhz) = clk_div_ls_tx.div_int*6Mhz / 1.5 Mhz = 4 * clk_div_ls_tx.div_int
+  // - Fullspeed 1 bit time = (cpufreq / 12 Mhz) = clk_div_fs_tx.div_int*48Mhz / 12 Mhz = 4 * clk_div_fs_tx.div_int
+  // Since there is also overhead, we only wait 1.5 bit for LS and 1 bit for FS
+  uint32_t turnaround_in_cycle;
+  if (pp->low_speed) {
+    turnaround_in_cycle = 6 * pp->clk_div_ls_tx.div_int; // 1.5 bit time
+  } else {
+    turnaround_in_cycle = 4 * pp->clk_div_fs_tx.div_int; // 1 bit time
+  }
+
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
   // This is to detect packets without an EOP because the device was unplugged.
   uint32_t start = get_time_us_32();
@@ -227,8 +240,10 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       }
       idx++;
     } else if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) != 0) {
-      // Exit early if we've gotten an EOP. There *might* be a race between EOP
-      // detection and NRZI decoding but it is unlikely.
+      // Exit since we've gotten an EOP.
+      // Timing critical: per USB specs, handshake must be sent within 2-7 bit-time strictly
+      busy_wait_at_least_cycles(turnaround_in_cycle); // wait for turnaround
+
       if (handshake == USB_PID_ACK) {
         // Only ACK if crc matches
         if (idx >= 4 && crc_match) {
