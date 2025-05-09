@@ -97,8 +97,17 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(pio_port_t *pp,
     continue;
   }
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
-  while (*pc <= PIO_USB_TX_ENCODED_DATA_COMP) {
+  while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
     continue;
+  }
+
+  // For Low speed host, wait until EOP is fully sent. Otherwise, we can send another packet
+  // before inter-packet delay timeout, which is 2-bit time by USB specs.
+  // For Full speed, our overhead is probably enough without this additional wait.
+  if (pp->low_speed) {
+    while (*pc <= PIO_USB_TX_ENCODED_DATA_COMP) {
+      continue;
+    }
   }
 }
 
