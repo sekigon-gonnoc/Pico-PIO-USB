@@ -220,12 +220,12 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // Pre-calculate number of cycle per bit time
   // - Lowspeed: 1 bit time = (cpufreq / 1.5 Mhz) = clk_div_ls_tx.div_int*6Mhz / 1.5 Mhz = 4 * clk_div_ls_tx.div_int
   // - Fullspeed 1 bit time = (cpufreq / 12 Mhz) = clk_div_fs_tx.div_int*48Mhz / 12 Mhz = 4 * clk_div_fs_tx.div_int
-  // Since there is also overhead, we only wait 1.5 bit for LS and 1 bit for FS
+  // Since there is also overhead, we only wait 1.5 bit for LS and no wait for FS
   uint32_t turnaround_in_cycle;
   if (pp->low_speed) {
     turnaround_in_cycle = 6 * pp->clk_div_ls_tx.div_int; // 1.5 bit time
   } else {
-    turnaround_in_cycle = 4 * pp->clk_div_fs_tx.div_int; // 1 bit time
+    turnaround_in_cycle = 4 * pp->clk_div_fs_tx.div_int; // 1 bit time, but not used
   }
 
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
@@ -251,7 +251,9 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
     } else if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) != 0) {
       // Exit since we've gotten an EOP.
       // Timing critical: per USB specs, handshake must be sent within 2-7 bit-time strictly
-      busy_wait_at_least_cycles(turnaround_in_cycle); // wait for turnaround
+      if (pp->low_speed) {
+        busy_wait_at_least_cycles(turnaround_in_cycle); // wait for turnaround for LS only
+      }
 
       if (handshake == USB_PID_ACK) {
         // Only ACK if crc matches
