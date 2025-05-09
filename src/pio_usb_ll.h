@@ -148,6 +148,9 @@ pio_usb_bus_get_line_state(root_port_t *root) {
     gpio_set_input_enabled(root->pin_dp, false);
     gpio_set_input_enabled(root->pin_dm, false);
 
+    // short delay to drain leaked current, required when overclocked CPU, tested with 264Mhz
+    __asm volatile("nop; nop; nop; nop; nop; nop; nop; nop;");
+
     gpio_set_input_enabled(root->pin_dp, true);
     gpio_set_input_enabled(root->pin_dm, true);
   }
