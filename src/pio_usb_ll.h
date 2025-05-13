@@ -141,6 +141,21 @@ void pio_usb_bus_send_token(pio_port_t *pp, uint8_t token, uint8_t addr,
 
 static __always_inline port_pin_status_t
 pio_usb_bus_get_line_state(root_port_t *root) {
+#ifdef PICO_RP2350
+  // RP2350-E9 Errata affect up to rev A2/B0
+  // workaround: disable input enable (to drain leaked current), then enable it immediately before reading
+  if (rp2350_chip_version() <= 2) {
+    gpio_set_input_enabled(root->pin_dp, false);
+    gpio_set_input_enabled(root->pin_dm, false);
+
+    // short delay to drain leaked current, required when overclocked CPU, tested with 264Mhz
+    __asm volatile("nop; nop; nop; nop; nop; nop; nop; nop;");
+
+    gpio_set_input_enabled(root->pin_dp, true);
+    gpio_set_input_enabled(root->pin_dm, true);
+  }
+#endif
+
   uint8_t dp = gpio_get(root->pin_dp) ? 0 : 1;
   uint8_t dm = gpio_get(root->pin_dm) ? 0 : 1;
 

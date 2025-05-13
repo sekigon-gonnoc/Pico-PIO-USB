@@ -35,6 +35,7 @@ static __unused uint32_t int_stat;
 static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
 static uint8_t sof_packet_encoded[4 * 2 * 7 / 6 + 2];
 static uint8_t sof_packet_encoded_len;
+static uint8_t keepalive_encoded[1];
 
 static bool sof_timer(repeating_timer_t *_rt);
 
@@ -84,6 +85,7 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
 
   sof_packet_encoded_len =
       pio_usb_ll_encode_tx_data(sof_packet, sizeof(sof_packet), sof_packet_encoded);
+  pio_usb_ll_encode_tx_data(NULL, 0, keepalive_encoded);
 
   if (!c->skip_alarm_pool) {
     _alarm_pool = c->alarm_pool;
@@ -266,7 +268,13 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
       continue;
     }
     configure_root_port(pp, root);
-    pio_usb_bus_usb_transfer(pp, sof_packet_encoded, sof_packet_encoded_len);
+    if (root->is_fullspeed) {
+      // Send SOF for full speed
+      pio_usb_bus_usb_transfer(pp, sof_packet_encoded, sof_packet_encoded_len);
+    } else {
+      // Send Keep alive for low speed
+      pio_usb_bus_usb_transfer(pp, keepalive_encoded, 1);
+    }
   }
 
   // Carry out all queued endpoint transaction
