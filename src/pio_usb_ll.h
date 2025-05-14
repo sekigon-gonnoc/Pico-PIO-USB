@@ -6,6 +6,7 @@
 #pragma once
 
 #include "hardware/pio.h"
+#include "hardware/regs/sysinfo.h"
 #include "pio_usb_configuration.h"
 #include "usb_definitions.h"
 #include <stdint.h>
@@ -144,15 +145,18 @@ pio_usb_bus_get_line_state(root_port_t *root) {
 #ifdef PICO_RP2350
   // RP2350-E9 Errata affect up to rev A2/B0
   // workaround: disable input enable (to drain leaked current), then enable it immediately before reading
-  if (rp2350_chip_version() <= 2) {
-    gpio_set_input_enabled(root->pin_dp, false);
-    gpio_set_input_enabled(root->pin_dm, false);
+  // Avoid rp2350_chip_version()/gpio_set_input_enabled() to make sure this is in SRAM
+  uint32_t const chip_id = *((io_ro_32*)(SYSINFO_BASE + SYSINFO_CHIP_ID_OFFSET));
+  uint32_t const chip_version = (chip_id & SYSINFO_CHIP_ID_REVISION_BITS) >> SYSINFO_CHIP_ID_REVISION_LSB;
+  if (chip_version <= 2) {
+    hw_clear_bits(&pads_bank0_hw->io[root->pin_dp], PADS_BANK0_GPIO0_IE_BITS);
+    hw_clear_bits(&pads_bank0_hw->io[root->pin_dm], PADS_BANK0_GPIO0_IE_BITS);
 
     // short delay to drain leaked current, required when overclocked CPU, tested with 264Mhz
     __asm volatile("nop; nop; nop; nop; nop; nop; nop; nop;");
 
-    gpio_set_input_enabled(root->pin_dp, true);
-    gpio_set_input_enabled(root->pin_dm, true);
+    hw_set_bits(&pads_bank0_hw->io[root->pin_dp], PADS_BANK0_GPIO0_IE_BITS);
+    hw_set_bits(&pads_bank0_hw->io[root->pin_dm], PADS_BANK0_GPIO0_IE_BITS);
   }
 #endif
 
