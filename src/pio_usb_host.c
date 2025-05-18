@@ -35,6 +35,7 @@ static __unused uint32_t int_stat;
 static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
 static uint8_t sof_packet_encoded[4 * 2 * 7 / 6 + 2];
 static uint8_t sof_packet_encoded_len;
+static uint8_t keepalive_encoded[1];
 
 static bool sof_timer(repeating_timer_t *_rt);
 
@@ -66,7 +67,6 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
 
   pio_usb_bus_init(pp, c, root);
   root->mode = PIO_USB_MODE_HOST;
-  pp->host = true;
 
   float const cpu_freq = (float)clock_get_hz(clk_sys);
   pio_calculate_clkdiv_from_float(cpu_freq / 48000000,
@@ -85,6 +85,7 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
 
   sof_packet_encoded_len =
       pio_usb_ll_encode_tx_data(sof_packet, sizeof(sof_packet), sof_packet_encoded);
+  pio_usb_ll_encode_tx_data(NULL, 0, keepalive_encoded);
 
   if (!c->skip_alarm_pool) {
     _alarm_pool = c->alarm_pool;
@@ -267,7 +268,13 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
       continue;
     }
     configure_root_port(pp, root);
-    pio_usb_bus_usb_transfer(pp, sof_packet_encoded, sof_packet_encoded_len);
+    if (root->is_fullspeed) {
+      // Send SOF for full speed
+      pio_usb_bus_usb_transfer(pp, sof_packet_encoded, sof_packet_encoded_len);
+    } else {
+      // Send Keep alive for low speed
+      pio_usb_bus_usb_transfer(pp, keepalive_encoded, 1);
+    }
   }
 
   // Carry out all queued endpoint transaction
@@ -427,7 +434,7 @@ bool pio_usb_host_endpoint_open(uint8_t root_idx, uint8_t device_address,
                                 uint8_t const *desc_endpoint, bool need_pre) {
   const endpoint_descriptor_t *d = (const endpoint_descriptor_t *)desc_endpoint;
   if (NULL != _find_ep(root_idx, device_address, d->epaddr)) {
-    return false; // endpoint already opened
+    return true; // already opened
   }
   for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
     endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
@@ -619,7 +626,6 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 
   // Setup token
   pio_usb_bus_prepare_receive(pp);
-
   pio_usb_bus_send_token(pp, USB_PID_SETUP, ep->dev_addr, 0);
 
   // Data
@@ -628,10 +634,10 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 
   // Handshake
   pio_usb_bus_start_receive(pp);
-  pio_usb_bus_wait_handshake(pp);
+  const uint8_t handshake = pio_usb_bus_wait_handshake(pp);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
 
-  if (pp->usb_rx_buffer[0] == USB_SYNC && pp->usb_rx_buffer[1] == USB_PID_ACK) {
+  if (handshake == USB_PID_ACK) {
     ep->actual_len = 8;
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
   } else {

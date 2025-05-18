@@ -14,7 +14,6 @@
 #include "pio_usb_configuration.h"
 #include "pio_usb_ll.h"
 #include "usb_definitions.h"
-#include <usb_rx.pio.h>
 
 pio_usb_configuration_t pio_usb_config = PIO_USB_DEFAULT_CONFIG;
 
