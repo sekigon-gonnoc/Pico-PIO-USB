@@ -525,7 +525,7 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
   return byte_idx;
 }
 
-static inline __force_inline void prepare_tx_data(endpoint_t *ep) {
+static __force_inline void prepare_tx_data(endpoint_t *ep) {
   uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
   uint8_t buffer[PIO_USB_EP_SIZE + 4];
   buffer[0] = USB_SYNC;

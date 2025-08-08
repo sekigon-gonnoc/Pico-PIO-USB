@@ -414,7 +414,7 @@ void pio_usb_host_close_device(uint8_t root_idx, uint8_t device_address) {
   }
 }
 
-static inline __force_inline endpoint_t * _find_ep(uint8_t root_idx, 
+static __force_inline endpoint_t * _find_ep(uint8_t root_idx,
                                                    uint8_t device_address, uint8_t ep_address) {
   for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
     endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
