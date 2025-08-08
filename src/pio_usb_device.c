@@ -3,9 +3,6 @@
  *                    Ha Thach (thach@tinyusb.org)
  */
 
-#pragma GCC push_options
-#pragma GCC optimize("-O3")
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,6 +19,9 @@
 #include "hardware/irq.h"
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
+
+GCC_Pragma("GCC push_options")
+GCC_Pragma("GCC optimize(\"O3\")")
 
 static uint8_t new_devaddr = 0;
 static uint8_t ep0_crc5_lut[16];
@@ -567,4 +567,4 @@ static void __no_inline_not_in_flash_func(__pio_usb_device_irq_handler)(uint8_t 
 // weak alias to __pio_usb_device_irq_handler
 void pio_usb_device_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_device_irq_handler")));
 
-#pragma GCC pop_options
+GCC_Pragma("GCC pop_options")
