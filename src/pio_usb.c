@@ -259,22 +259,96 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   return -1;
 }
 
-static __always_inline void add_pio_host_rx_program(PIO pio,
+static __always_inline int try_add_pio_host_rx_program(PIO pio,
                                              const pio_program_t *program,
                                              const pio_program_t *debug_program,
-                                             uint *offset, int debug_pin) {
-  if (debug_pin < 0) {
-    *offset = pio_add_program(pio, program);
-  } else {
-    *offset = pio_add_program(pio, debug_program);
+                                             int *offset, int debug_pin) {
+  const pio_program_t *prog;
+
+  if (debug_pin < 0)
+	  prog = program;
+  else
+	  prog = debug_program;
+
+  if (pio_can_add_program(pio, prog)) {
+    *offset = pio_add_program(pio, prog);
+    return prog->length;
   }
+
+  return -1;
 }
 
-static void __no_inline_not_in_flash_func(initialize_host_programs)(
-    pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port) {
+static __always_inline void remove_pio_host_rx_program(PIO pio,
+                                             const pio_program_t *program,
+                                             const pio_program_t *debug_program,
+                                             int offset, int debug_pin) {
+   if (debug_pin < 0) {
+    pio_remove_program(pio, program, offset);
+   } else {
+    pio_remove_program(pio, debug_program, offset);
+   }
+ }
+
+static bool __no_inline_not_in_flash_func(try_initialize_host_programs)(
+    pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port,
+    uint *tx_inst_count, uint *rx_inst_count) {
+  int offset_tx = -1, offset_rx = -1, offset_eop = -1;
+  int sm_tx = -1, sm_rx = -1, sm_eop = -1;
+  int ret;
+
   // TX program should be placed at address 0
-  pio_add_program_at_offset(pp->pio_usb_tx, pp->fs_tx_program, 0);
-  pp->offset_tx = 0;
+  if (pio_can_add_program_at_offset(pp->pio_usb_tx, pp->fs_tx_program, 0)) {
+    offset_tx = pio_add_program_at_offset(pp->pio_usb_tx, pp->fs_tx_program, 0);
+    if (tx_inst_count)
+      *tx_inst_count = pp->fs_tx_program->length;
+  } else {
+    goto err_out;
+  }
+  ret = try_add_pio_host_rx_program(pp->pio_usb_rx, &usb_nrzi_decoder_program,
+          &usb_nrzi_decoder_debug_program, &offset_rx, c->debug_pin_rx);
+  if (ret <= 0)
+    goto err_out;
+  if (rx_inst_count)
+    *rx_inst_count = ret;
+  ret = try_add_pio_host_rx_program(pp->pio_usb_rx, &usb_edge_detector_program,
+          &usb_edge_detector_debug_program, &offset_eop, c->debug_pin_eop);
+  if (ret <= 0)
+    goto err_out;
+  if (rx_inst_count)
+     *rx_inst_count += ret;
+  if (c->sm_tx < 0) {
+	  sm_tx = pio_claim_unused_sm(pp->pio_usb_tx, false);
+	  if (sm_tx < 0)
+		  goto err_out;
+  } else {
+  	pp->sm_tx = c->sm_tx;
+    pio_sm_claim(pp->pio_usb_tx, pp->sm_tx);
+  }
+  if (c->sm_rx < 0) {
+	  sm_rx = pio_claim_unused_sm(pp->pio_usb_rx, false);
+	  if (sm_rx < 0)
+		  goto err_out;
+  } else {
+  	pp->sm_rx = c->sm_rx;
+    pio_sm_claim(pp->pio_usb_rx, pp->sm_rx);
+  }
+  if (c->sm_eop < 0) {
+	  sm_eop = pio_claim_unused_sm(pp->pio_usb_rx, false);
+	  if (sm_eop < 0)
+		  goto err_out;
+  } else {
+  	pp->sm_eop = c->sm_eop;
+    pio_sm_claim(pp->pio_usb_rx, pp->sm_eop);
+  }
+  pp->offset_tx = offset_tx;
+  pp->offset_rx = offset_rx;
+  pp->offset_eop = offset_eop;
+  if (c->sm_rx < 0)
+    pp->sm_rx = sm_rx;
+  if (c->sm_tx < 0)
+    pp->sm_tx = sm_tx;
+  if (c->sm_eop < 0)
+    pp->sm_eop = sm_eop;
   usb_tx_fs_program_init(pp->pio_usb_tx, pp->sm_tx, pp->offset_tx, port->pin_dp,
                          port->pin_dm);
   uint32_t sideset_fj_lk;
@@ -287,18 +361,12 @@ static void __no_inline_not_in_flash_func(initialize_host_programs)(
   pp->tx_start_instr = pio_encode_jmp(pp->offset_tx + 4) | sideset_fj_lk;
   pp->tx_reset_instr = pio_encode_jmp(pp->offset_tx + 2) | sideset_fj_lk;
 
-  add_pio_host_rx_program(pp->pio_usb_rx, &usb_nrzi_decoder_program,
-                          &usb_nrzi_decoder_debug_program, &pp->offset_rx,
-                          c->debug_pin_rx);
   usb_rx_fs_program_init(pp->pio_usb_rx, pp->sm_rx, pp->offset_rx, port->pin_dp,
                          port->pin_dm, c->debug_pin_rx);
   pp->rx_reset_instr = pio_encode_jmp(pp->offset_rx);
   pp->rx_reset_instr2 = pio_encode_set(pio_x, 0);
 
-  add_pio_host_rx_program(pp->pio_usb_rx, &usb_edge_detector_program,
-                          &usb_edge_detector_debug_program, &pp->offset_eop,
-                          c->debug_pin_eop);
-  eop_detect_fs_program_init(pp->pio_usb_rx, c->sm_eop, pp->offset_eop,
+  eop_detect_fs_program_init(pp->pio_usb_rx, pp->sm_eop, pp->offset_eop,
                              port->pin_dp, port->pin_dm, true,
                              c->debug_pin_eop);
 
@@ -307,6 +375,25 @@ static void __no_inline_not_in_flash_func(initialize_host_programs)(
   pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_rx, port->pin_dp);
   pio_sm_set_jmp_pin(pp->pio_usb_rx, pp->sm_eop, port->pin_dm);
   pio_sm_set_in_pins(pp->pio_usb_rx, pp->sm_eop, port->pin_dp);
+
+  return true;
+
+err_out:
+  if (offset_tx >= 0)
+    pio_remove_program(pp->pio_usb_tx, pp->fs_tx_program, offset_tx);
+  if (offset_rx >= 0)
+    remove_pio_host_rx_program(pp->pio_usb_rx, &usb_nrzi_decoder_program,
+                               &usb_nrzi_decoder_debug_program, offset_rx, c->debug_pin_rx);
+  if (offset_eop >= 0)
+    remove_pio_host_rx_program(pp->pio_usb_rx, &usb_edge_detector_program,
+                               &usb_edge_detector_debug_program, offset_eop, c->debug_pin_eop);
+  if (sm_tx >= 0)
+    pio_sm_unclaim(pp->pio_usb_tx, sm_tx);
+  if (sm_rx >= 0)
+    pio_sm_unclaim(pp->pio_usb_rx, sm_rx);
+  if (sm_eop >= 0)
+    pio_sm_unclaim(pp->pio_usb_rx, sm_eop);
+  return false;  
 }
 
 static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
@@ -321,15 +408,43 @@ static void configure_tx_channel(uint8_t ch, PIO pio, uint sm) {
   dma_channel_set_write_addr(ch, &pio->txf[sm], false);
 }
 
+static bool init_host_programs(
+    pio_port_t *pp, const pio_usb_configuration_t *c, root_port_t *port,
+    uint *tx_inst_count, uint *rx_inst_count) {
+  bool pio_rx_auto = false, pio_tx_auto = false;
+
+  if (!pp->pio_usb_tx) {
+    pio_tx_auto = true;
+    pp->pio_usb_tx = pio0;
+  }
+  if (!pp->pio_usb_rx) {
+    pio_rx_auto = true;
+    pp->pio_usb_rx = pio1;
+  }
+  if (try_initialize_host_programs(pp, c, port, tx_inst_count, rx_inst_count))
+    return true;
+  if (!pio_tx_auto && !pio_rx_auto)
+    return false;
+  if (pio_tx_auto)
+    pp->pio_usb_tx = pio1;
+  if (pio_rx_auto)
+    pp->pio_usb_rx = pio0;
+  return try_initialize_host_programs(pp, c, port, tx_inst_count, rx_inst_count);
+ }
+
 static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
                          root_port_t *port) {
-  pp->pio_usb_tx = pio_get_instance(c->pio_tx_num);
-  pp->sm_tx = c->sm_tx;
-  pp->tx_ch = c->tx_ch;
-  pp->pio_usb_rx = pio_get_instance(c->pio_rx_num);
-  pp->sm_rx = c->sm_rx;
-  pp->sm_eop = c->sm_eop;
-  port->pin_dp = c->pin_dp;
+  if (c->pio_tx_num >= 0)
+    pp->pio_usb_tx = pio_get_instance(c->pio_tx_num);
+  else
+    pp->pio_usb_tx = NULL;
+
+  if (c->pio_rx_num >=-0)
+    pp->pio_usb_rx = pio_get_instance(c->pio_rx_num);
+  else
+    pp->pio_usb_tx = NULL;
+
+  port->pin_dp = c->pin_dp; 
 
   uint highest_pin;
   if (c->pinout == PIO_USB_PINOUT_DPDM) {
@@ -359,10 +474,6 @@ static void apply_config(pio_port_t *pp, const pio_usb_configuration_t *c,
 
   pp->debug_pin_rx = c->debug_pin_rx;
   pp->debug_pin_eop = c->debug_pin_eop;
-
-  pio_sm_claim(pp->pio_usb_tx, pp->sm_tx);
-  pio_sm_claim(pp->pio_usb_rx, pp->sm_rx);
-  pio_sm_claim(pp->pio_usb_rx, pp->sm_eop);
 }
 
 static void port_pin_drive_setting(const root_port_t *port) {
@@ -372,16 +483,36 @@ static void port_pin_drive_setting(const root_port_t *port) {
   gpio_set_drive_strength(port->pin_dm, GPIO_DRIVE_STRENGTH_12MA);
 }
 
+static void get_dma_channel(pio_port_t *pp, const pio_usb_configuration_t *c) {
+  if (c->tx_ch < 0) {
+    pp->tx_ch = dma_claim_unused_channel(true);
+  } else {
+    pp->tx_ch = c->tx_ch;
+    dma_channel_claim(pp->tx_ch + 1);
+  }
+}
+
+static void dump_allocated_hw_resources(
+    const pio_port_t *pp, uint tx_inst_count, uint rx_inst_count) {
+  printf("pio-usb is using:\n");
+  printf("\tUSB transmitter: %d instructions @ PIO %d, State Machine %d, DMA %d\n",
+    tx_inst_count, pp->pio_usb_tx == pio1 ? 1 : 0, pp->sm_tx, pp->tx_ch);
+  printf("\tUSB receiver: %d instructions @ PIO %d, State Machines %d and %d\n",
+    rx_inst_count, pp->pio_usb_rx == pio1 ? 1 : 0, pp->sm_rx, pp->sm_eop);
+ }
+
 void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
                       root_port_t *root) {
-  memset(root, 0, sizeof(root_port_t));
+  uint tx_inst_count = 0, rx_inst_count = 0;
 
-  pp->pio_usb_tx = pio_get_instance(c->pio_tx_num);
-  dma_claim_mask(1<<c->tx_ch);
-  configure_tx_channel(c->tx_ch, pp->pio_usb_tx, c->sm_tx);
+  memset(root, 0, sizeof(root_port_t));
+  get_dma_channel(pp, c);
 
   apply_config(pp, c, root);
-  initialize_host_programs(pp, c, root);
+  if (!init_host_programs(pp, c, root, &tx_inst_count, &rx_inst_count))
+    panic("pio-usb: Not enough hardware resources - State Machines and instructions");
+  configure_tx_channel(pp->tx_ch, pp->pio_usb_tx, pp->sm_tx);
+
   port_pin_drive_setting(root);
   root->initialized = true;
   root->dev_addr = 0;
@@ -395,6 +526,8 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
   pio_usb_ll_encode_tx_data(raw_packet, 2, stall_encoded);
   raw_packet[1] = USB_PID_PRE;
   pio_usb_ll_encode_tx_data(raw_packet, 2, pre_encoded);
+
+  dump_allocated_hw_resources(pp, tx_inst_count, rx_inst_count);
 }
 
 //--------------------------------------------------------------------+
