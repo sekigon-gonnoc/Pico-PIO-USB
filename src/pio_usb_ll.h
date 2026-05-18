@@ -141,7 +141,7 @@ void pio_usb_bus_send_token(pio_port_t *pp, uint8_t token, uint8_t addr,
 
 static __always_inline port_pin_status_t
 pio_usb_bus_get_line_state(root_port_t *root) {
-#if PICO_RP2350
+#if defined(PICO_RP2350) && PICO_RP2350
   // RP2350-E9 Errata affect up to rev A2/B0
   // workaround: disable input enable (to drain leaked current), then enable it immediately before reading
   // Avoid rp2350_chip_version()/gpio_set_input_enabled() to make sure this is in SRAM
