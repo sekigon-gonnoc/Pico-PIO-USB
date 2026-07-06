@@ -142,6 +142,18 @@ void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
+
+  // Also re-initialize the EOP/edge-detector SM. Only sm_rx was reset here,
+  // so a wedged sm_eop persisted across transactions: every subsequent IN
+  // fails silently (no RX-start flag is ever raised) while the rest of the
+  // stack looks healthy — RX flatlines until an external reset. Jumping to
+  // the program entry (`irq wait IRQ_RX_EOP` at offset_eop) reproduces the
+  // state pio_sm_init() establishes; the flag it raises is cleared by the
+  // pio_usb_bus_start_receive() that follows every prepare.
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
+  pio_sm_restart(pp->pio_usb_rx, pp->sm_eop);
+  pio_sm_exec(pp->pio_usb_rx, pp->sm_eop, pio_encode_jmp(pp->offset_eop));
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, true);
 }
 
 static inline __force_inline bool pio_usb_bus_wait_for_rx_start(const pio_port_t* pp) {
