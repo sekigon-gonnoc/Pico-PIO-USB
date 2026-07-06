@@ -224,6 +224,22 @@ static bool __no_inline_not_in_flash_func(connection_check)(root_port_t *port) {
     busy_wait_1_us();
 
     if (pio_usb_bus_get_line_state(port) == PORT_PIN_SE0) {
+      // Require SE0 to persist for ~100 us before believing the disconnect.
+      // A real unplug holds SE0 for milliseconds, but the previous 2 us
+      // filter also passed short EMI/crosstalk glitches. The resulting
+      // spurious DISCONNECT (often followed by a CONNECT in the same or
+      // next frame, since the device never left) corrupts the host stack's
+      // device state: endpoints are closed while the device is still
+      // considered mounted and all traffic stops until an external reset.
+      // Observed roughly once per 2 hours on a full-speed MIDI host bench.
+      for (int confirm = 0; confirm < 20; confirm++) {
+        for (int w = 0; w < 5; w++) {
+          busy_wait_1_us();
+        }
+        if (pio_usb_bus_get_line_state(port) != PORT_PIN_SE0) {
+          return true; // glitch, still connected
+        }
+      }
       busy_wait_1_us();
       // device disconnect
       port->connected = false;
