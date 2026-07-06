@@ -167,8 +167,16 @@ pio_usb_bus_get_line_state(root_port_t *root) {
 
 static __always_inline void pio_usb_bus_start_receive(const pio_port_t *pp) {
   pp->pio_usb_rx->irq = IRQ_RX_ALL_MASK;
-  while ((pp->pio_usb_rx->irq & IRQ_RX_ALL_MASK) != 0) {
-    continue;
+  // Bounded wait: a wedged or babbling RX/EOP state machine can re-raise
+  // its IRQ flag continuously, which would turn this clear-wait into an
+  // infinite spin. Normal clearing is immediate; on expiry (~1 ms budget)
+  // proceed anyway — the transaction then fails through the regular
+  // retry/error path.
+  for (uint32_t guard = 0;
+       (pp->pio_usb_rx->irq & IRQ_RX_ALL_MASK) != 0; guard++) {
+    if (guard > 50000) {
+      break;
+    }
   }
 }
 
