@@ -92,24 +92,30 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(pio_port_t *pp,
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
-  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
   while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
     continue;
   }
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
-  if (pp->low_speed) {
-    // For Low speed host, wait until EOP is fully sent. Otherwise, we can send another packet
-    // before inter-packet delay timeout, which is 2-bit time by USB specs.
-    // For Full speed, our overhead is probably enough without this additional wait.
-    while (*pc <= PIO_USB_TX_ENCODED_DATA_COMP) {
-      continue;
-    }
-  } else {
-    while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
-      continue;
-    }
-  }
+  // Wait out the EOP tail deterministically instead of polling the state
+  // machine's program counter. The previous pc-polling loop
+  //   while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {}
+  // is a sampling race: after raising IRQ_TX_EOP the SM spends only ~3
+  // bit-times (about 250 ns at full speed) in the EOP address region before
+  // wrapping back below PIO_USB_TX_ENCODED_DATA_COMP to park on the
+  // `out pc, 2` instruction. If the CPU's polling never samples that brief
+  // window the exit condition is never observed and the core spins forever.
+  //
+  // The tail length after the completion IRQ is fixed (2xSE0 within the irq
+  // instruction, then J, then bus release), so wait 4 bit-times. This wait
+  // must stay short: for IN transactions the device may answer as early as
+  // 2 bit-times after EOP end, and callers arm the RX state machine only
+  // after this function returns.
+  //
+  // 1 bit-time = 4 CPU cycles * clkdiv (the TX SM runs 4 cycles per bit).
+  uint32_t const bit_cycles = 4u * (pp->low_speed ? pp->clk_div_ls_tx.div_int
+                                                  : pp->clk_div_fs_tx.div_int);
+  busy_wait_at_least_cycles(4u * bit_cycles);
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
