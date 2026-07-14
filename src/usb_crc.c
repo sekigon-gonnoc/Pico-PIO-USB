@@ -52,7 +52,7 @@ const uint16_t __not_in_flash("crc_tbl") crc16_tbl[256] = {
     0x4540, 0x8701, 0x47c0, 0x4680, 0x8641, 0x8201, 0x42c0, 0x4380, 0x8341,
     0x4100, 0x81c1, 0x8081, 0x4040};
 
-uint16_t calc_usb_crc16(const uint8_t *data, uint16_t len) {
+uint16_t __not_in_flash_func(calc_usb_crc16)(const uint8_t *data, uint16_t len) {
   uint16_t crc = 0xffff;
 
   for (int idx = 0; idx < len; idx++) {
