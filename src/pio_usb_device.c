@@ -211,6 +211,14 @@ static void __no_inline_not_in_flash_func(usb_device_packet_handler)(void) {
 
     if (ep->has_transfer) {
       if (res >= 0) {
+        // Clamp to the transaction length the device actually allocated a
+        // buffer for. A non-compliant or malicious host could otherwise send
+        // an OUT packet larger than ep->app_buf, causing an out-of-bounds
+        // memcpy.
+        uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
+        if ((uint16_t)res > xact_len) {
+          res = xact_len;
+        }
         memcpy(ep->app_buf, pp->usb_rx_buffer + 2, res);
         pio_usb_ll_transfer_continue(ep, res);
       }

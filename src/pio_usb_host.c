@@ -548,6 +548,14 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
 
   if (receive_len >= 0) {
     if (receive_pid == expect_pid) {
+      // Clamp to the transaction length the host actually requested/allocated
+      // a buffer for. A non-compliant or malicious device could otherwise
+      // report a receive_len larger than ep->app_buf (or usb_rx_buffer),
+      // causing an out-of-bounds memcpy.
+      uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
+      if ((uint16_t)receive_len > xact_len) {
+        receive_len = xact_len;
+      }
       memcpy(ep->app_buf, &pp->usb_rx_buffer[2], receive_len);
       pio_usb_ll_transfer_continue(ep, receive_len);
     } else {
