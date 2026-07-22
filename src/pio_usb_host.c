@@ -224,6 +224,20 @@ static bool __no_inline_not_in_flash_func(connection_check)(root_port_t *port) {
     busy_wait_1_us();
 
     if (pio_usb_bus_get_line_state(port) == PORT_PIN_SE0) {
+      // Require SE0 to persist for ~100 us before treating it as a
+      // disconnect. A detached device holds SE0 indefinitely, while EMI or
+      // crosstalk glitches can span several microseconds. Acting on a
+      // glitch emits a spurious DISCONNECT (usually followed by a CONNECT,
+      // since the device never left), closing the endpoints while the
+      // device is still considered mounted.
+      for (int confirm = 0; confirm < 20; confirm++) {
+        for (int w = 0; w < 5; w++) {
+          busy_wait_1_us();
+        }
+        if (pio_usb_bus_get_line_state(port) != PORT_PIN_SE0) {
+          return true; // glitch, still connected
+        }
+      }
       busy_wait_1_us();
       // device disconnect
       port->connected = false;

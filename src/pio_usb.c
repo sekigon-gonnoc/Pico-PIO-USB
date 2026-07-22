@@ -92,24 +92,48 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer)(pio_port_t *pp,
   dma_channel_transfer_from_buffer_now(pp->tx_ch, data, len);
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
-  io_ro_32 *pc = &pp->pio_usb_tx->sm[pp->sm_tx].addr;
+  // Bounded wait on the TX completion flag. `len` pre-encoded bytes shift
+  // out at the wire bit rate (full speed: len*8/12MHz us, low speed: 8x),
+  // so a legitimate transfer can never approach this budget. The fixed
+  // 1000 us component covers wall-clock preemption when a transfer is
+  // issued from task context and the 1 ms frame interrupt runs in between.
+  // On expiry, abort the DMA and restart the TX state machine so the next
+  // transfer starts from a clean state; the lost transaction is retried by
+  // the USB protocol.
+  uint32_t const expected_us =
+      pp->low_speed ? (len * 16u) / 3u + 1u : (len * 2u) / 3u + 1u;
+  uint32_t const timeout_us = 1000u + 4u * expected_us;
+  uint32_t const start_us = get_time_us_32();
   while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
-    continue;
+    if (get_time_us_32() - start_us > timeout_us) {
+      dma_channel_abort(pp->tx_ch);
+      pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, false);
+      pio_sm_clear_fifos(pp->pio_usb_tx, pp->sm_tx);
+      pio_sm_restart(pp->pio_usb_tx, pp->sm_tx);
+      pio_sm_set_enabled(pp->pio_usb_tx, pp->sm_tx, true);
+      return;
+    }
   }
   pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
 
-  if (pp->low_speed) {
-    // For Low speed host, wait until EOP is fully sent. Otherwise, we can send another packet
-    // before inter-packet delay timeout, which is 2-bit time by USB specs.
-    // For Full speed, our overhead is probably enough without this additional wait.
-    while (*pc <= PIO_USB_TX_ENCODED_DATA_COMP) {
-      continue;
-    }
-  } else {
-    while (*pc < PIO_USB_TX_ENCODED_DATA_COMP) {
-      continue;
-    }
-  }
+  // Wait out the EOP tail deterministically. After raising IRQ_TX_EOP the
+  // state machine drives the remaining EOP sequence (2xSE0 within the irq
+  // instruction, then J, then bus release) and parks for the next packet —
+  // a fixed ~3.5 bit-times, so a 4-bit-time wait covers it.
+  //
+  // Polling the SM program counter for this is inherently racy: pc sits in
+  // the EOP address region only for those few bit-times before wrapping
+  // back below PIO_USB_TX_ENCODED_DATA_COMP, so a poll loop that misses
+  // the window never observes its exit condition.
+  //
+  // Keep this wait short: a device may answer an IN token as early as two
+  // bit-times after EOP end (USB 2.0 7.1.18), and callers arm the RX state
+  // machine only after this function returns.
+  //
+  // 1 bit-time = 4 CPU cycles * clkdiv (the TX SM runs 4 cycles per bit).
+  uint32_t const bit_cycles = 4u * (pp->low_speed ? pp->clk_div_ls_tx.div_int
+                                                  : pp->clk_div_fs_tx.div_int);
+  busy_wait_at_least_cycles(4u * bit_cycles);
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
@@ -136,6 +160,17 @@ void __no_inline_not_in_flash_func(pio_usb_bus_prepare_receive)(const pio_port_t
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr);
   pio_sm_exec(pp->pio_usb_rx, pp->sm_rx, pp->rx_reset_instr2);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, true);
+
+  // Also re-initialize the EOP/edge-detector SM. Resetting only sm_rx lets
+  // a wedged sm_eop persist across transactions, after which no RX-start
+  // flag is raised again and every IN transaction times out silently.
+  // Jumping to the program entry (`irq wait IRQ_RX_EOP` at offset_eop)
+  // reproduces the state pio_sm_init() establishes; the raised flag is
+  // cleared by the pio_usb_bus_start_receive() that follows every prepare.
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, false);
+  pio_sm_restart(pp->pio_usb_rx, pp->sm_eop);
+  pio_sm_exec(pp->pio_usb_rx, pp->sm_eop, pio_encode_jmp(pp->offset_eop));
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_eop, true);
 }
 
 static inline __force_inline bool pio_usb_bus_wait_for_rx_start(const pio_port_t* pp) {
@@ -215,8 +250,18 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
 
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
   // This is to detect packets without an EOP because the device was unplugged.
+  //
+  // The 7 us timeout resets on every received byte, so a babbling bus or a
+  // wedged RX state machine that keeps producing data can hold this loop
+  // indefinitely. Bound the total packet time: the longest legitimate
+  // packet (64-byte data, low speed, bit-stuffed) completes well under
+  // 500 us.
+  uint32_t const abs_start = get_time_us_32();
   uint32_t start = get_time_us_32();
   while (1) {
+    if (get_time_us_32() - abs_start > 500) {
+      return -1;
+    }
     if (pio_sm_get_rx_fifo_level(pio_usb_rx, sm_rx)) {
       uint8_t data = pio_sm_get(pio_usb_rx, sm_rx) >> 24;
       if (idx < rx_buf_len) {
