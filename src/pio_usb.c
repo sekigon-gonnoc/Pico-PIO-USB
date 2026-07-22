@@ -191,7 +191,10 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   uint16_t crc_receive = 0xffff;
   bool crc_match = false;
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
-  int16_t idx = 0;
+  // idx keeps counting past rx_buf_len (only the store is bounds checked, so
+  // the CRC keeps rolling). Unsigned so that if it ever wraps it indexes back
+  // into the buffer instead of going negative and writing below it.
+  uint16_t idx = 0;
 
   // Per USB Specs 7.1.18 for turnaround: We must wait at least 2 bit times for inter-packet delay.
   // This is essential for working with LS device specially when we overlocked the mcu.
@@ -216,6 +219,12 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
   // This is to detect packets without an EOP because the device was unplugged.
   uint32_t start = get_time_us_32();
+  // Absolute deadline for the whole reception. The 7 us timeout below resets
+  // on every received byte, so a continuously toggling line (babble, or a
+  // disrupted timer per issue #192) can otherwise keep this loop running
+  // forever and overflow idx. The longest legal full-speed packet is ~685 us;
+  // 1200 us leaves margin.
+  uint32_t rx_start = start;
   while (1) {
     if (pio_sm_get_rx_fifo_level(pio_usb_rx, sm_rx)) {
       uint8_t data = pio_sm_get(pio_usb_rx, sm_rx) >> 24;
@@ -241,7 +250,9 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
 
       if (handshake == USB_PID_ACK) {
         // Only ACK if crc matches
-        if (idx >= 4 && crc_match) {
+        // Never ACK a packet longer than the buffer: bytes were dropped, so
+        // the stored data is truncated even if the rolling CRC matched.
+        if (idx >= 4 && idx <= rx_buf_len && crc_match) {
           pio_usb_bus_usb_transfer(pp, ack_encoded, 5);
           return idx - 4;
         }
@@ -251,8 +262,9 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
         pio_usb_bus_usb_transfer(pp, stall_encoded, 5);
       }
       break;
-    } else if (get_time_us_32() - start > 7) {
-      return -1; // device is probably unplugged
+    } else if (get_time_us_32() - start > 7 ||
+               get_time_us_32() - rx_start > 1200) {
+      return -1; // device is probably unplugged, or the line is babbling
     }
   }
 
