@@ -245,6 +245,52 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
           pio_usb_bus_usb_transfer(pp, ack_encoded, 5);
           return idx - 4;
         }
+        // Deterministic SYNC realignment. The RX PIO can lock onto a packet a
+        // few bits early, so every byte is shifted and the aligned CRC fails on
+        // data that is actually valid (see sekigon-gonnoc/Pico-PIO-USB#97, open
+        // since 2023: 0x01 0xa5 captured for 0x80 0xd2). Because a correct
+        // packet always begins with SYNC (0x80), the amount of shift is not a
+        // guess: drop k leading bits until SYNC reappears, then confirm with the
+        // PID check nibble and a recomputed CRC. This keys on the SYNC marker
+        // (the standard USB SIE alignment technique, USB-IF SIE white paper) and
+        // recovers any small offset, unlike a blind single-bit retry.
+        if (idx >= 4 && idx <= 18) {
+          for (uint8_t k = 1; k <= 7; k++) {
+            uint8_t fixed[19];
+            for (int16_t i = 0; i < idx; i++) {
+              uint8_t hi = (i + 1 < idx) ? (uint8_t)(usb_rx_buffer[i + 1] << (8 - k)) : 0;
+              fixed[i] = (uint8_t)((usb_rx_buffer[i] >> k) | hi);
+            }
+            if (fixed[0] != USB_SYNC) {
+              continue;
+            }
+            uint8_t rpid = fixed[1];
+            if ((uint8_t)((rpid >> 4) ^ (rpid & 0x0f)) != 0x0f) {
+              continue;
+            }
+            // Try the realigned packet at its natural length and one byte
+            // shorter (the shift can drop the final partial byte).
+            for (int16_t n = idx; n >= idx - 1; n--) {
+              if (n < 4) {
+                continue;
+              }
+              uint16_t c = 0xffff;
+              for (int16_t i = 2; i < n - 2; i++) {
+                c = update_usb_crc16(c, fixed[i]);
+              }
+              c ^= 0xffff;
+              uint16_t rx_crc =
+                  (uint16_t)fixed[n - 2] | ((uint16_t)fixed[n - 1] << 8);
+              if (c == rx_crc) {
+                pio_usb_bus_usb_transfer(pp, ack_encoded, 5);
+                for (int16_t i = 0; i < n; i++) {
+                  usb_rx_buffer[i] = fixed[i];
+                }
+                return n - 4;
+              }
+            }
+          }
+        }
       } else if (handshake == USB_PID_NAK) {
         pio_usb_bus_usb_transfer(pp, nak_encoded, 5);
       } else {
