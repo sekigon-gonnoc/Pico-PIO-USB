@@ -457,7 +457,11 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
   if (packet->request_type == USB_REQ_DIR_IN) {
     if (packet->request == 0x06) {
       if (packet->value_msb == DESC_TYPE_DEVICE) {
-        prepare_ep0_data((uint8_t *)descriptor_buffers.device, 18);
+        uint16_t req_len = (packet->length_lsb | (packet->length_msb << 8));
+        uint16_t desc_len =
+          descriptor_buffers.config[2] | (descriptor_buffers.config[3] << 8);
+        req_len = req_len > desc_len ? desc_len : req_len;
+        prepare_ep0_data((uint8_t *)descriptor_buffers.device, req_len);
         res = 0;
       } else if (packet->value_msb == DESC_TYPE_CONFIG) {
         ep0_desc_request_len = (packet->length_lsb | (packet->length_msb << 8));
