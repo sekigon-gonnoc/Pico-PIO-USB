@@ -13,4 +13,5 @@ add_subdirectory(${PICO_PIO_USB_DIR} pico_pio_usb)
 
 add_subdirectory(usb_device)
 add_subdirectory(host_hid_to_device_cdc)
+add_subdirectory(host_cdc_to_device_cdc_with_stdio_and_picotool_reset)
 add_subdirectory(test_ll)
