@@ -2,9 +2,6 @@
  * Copyright (c) 2021 sekigon-gonnoc
  */
 
-#pragma GCC push_options
-#pragma GCC optimize("-O3")
-
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h> // memcpy
@@ -23,6 +20,9 @@
 #include "pio_usb_configuration.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
+
+GCC_Pragma("GCC push_options")
+GCC_Pragma("GCC optimize(\"O3\")")
 
 #define UNUSED_PARAMETER(x) (void)x
 
@@ -525,7 +525,7 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_ll_encode_tx_data)(
   return byte_idx;
 }
 
-static inline __force_inline void prepare_tx_data(endpoint_t *ep) {
+static __force_inline void prepare_tx_data(endpoint_t *ep) {
   uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
   uint8_t buffer[PIO_USB_EP_SIZE + 4];
   buffer[0] = USB_SYNC;
@@ -639,4 +639,5 @@ int pio_usb_host_add_port(uint8_t pin_dp, PIO_USB_PINOUT pinout) {
   return -1;
 }
 
-#pragma GCC pop_options
+GCC_Pragma("GCC pop_options")
+

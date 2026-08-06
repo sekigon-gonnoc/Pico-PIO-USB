@@ -183,7 +183,7 @@ bool pio_usb_ll_transfer_start(endpoint_t *ep, uint8_t *buffer,
 bool pio_usb_ll_transfer_continue(endpoint_t *ep, uint16_t xferred_bytes);
 void pio_usb_ll_transfer_complete(endpoint_t *ep, uint32_t flag);
 
-static inline __force_inline uint16_t
+static __force_inline uint16_t
 pio_usb_ll_get_transaction_len(endpoint_t *ep) {
   uint16_t remaining = ep->total_len - ep->actual_len;
   return (remaining < ep->size) ? remaining : ep->size;
@@ -234,7 +234,7 @@ bool pio_usb_device_endpoint_open(uint8_t const *desc_endpoint);
 bool pio_usb_device_transfer(uint8_t ep_address, uint8_t *buffer,
                              uint16_t buflen);
 
-static inline __force_inline endpoint_t *
+static __force_inline endpoint_t *
 pio_usb_device_get_endpoint_by_address(uint8_t ep_address) {
   // index = 2*num + dir e.g out1, in1, out2, in2
   uint8_t const ep_idx = ((ep_address & 0x7f) << 1) | (ep_address >> 7);
