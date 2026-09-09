@@ -345,4 +345,7 @@ typedef struct {
   const uint8_t *config;
   const uint8_t **hid_report;
   const string_descriptor_t *string;
+  uint8_t string_count;        // number of valid entries in the string[] array
+  const uint8_t *ms_os_string; // Microsoft OS String Descriptor (index 0xEE), or NULL
+  const uint8_t *ms_compat_id; // Microsoft OS Extended Compatible ID Descriptor, or NULL
 } usb_descriptor_buffers_t;
