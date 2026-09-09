@@ -348,6 +348,23 @@ static int8_t ep0_desc_request_type = -1;
 static uint16_t ep0_desc_request_len;
 static uint8_t ep0_desc_request_idx;
 
+// Default line coding: 115200-8-N-1
+static uint8_t cdc_line_coding[7] = {0x00, 0xC2, 0x01, 0x00, 0x00, 0x00, 0x08};
+
+// Weak hooks for application code.
+void __attribute__((weak)) pio_usb_device_cdc_set_line_coding_cb(uint8_t itf, uint32_t bit_rate, uint8_t stop_bits, uint8_t parity, uint8_t data_bits) {
+  (void)itf;
+  (void)bit_rate;
+  (void)stop_bits;
+  (void)parity;
+  (void)data_bits;
+}
+
+void __attribute__((weak)) pio_usb_device_cdc_set_control_line_state_cb(uint8_t itf, uint16_t line_state) {
+  (void)itf;
+  (void)line_state;
+}
+
 static void __no_inline_not_in_flash_func(prepare_ep0_data)(uint8_t *data,
                                                             uint8_t len) {
   // 0: control out (rx), 1 : control in (tx)
@@ -464,11 +481,19 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
         ep0_desc_request_type = DESC_TYPE_CONFIG;
         res = 0;
       } else if (packet->value_msb == DESC_TYPE_STRING) {
-        if (descriptor_buffers.string != NULL) {
+        if (packet->value_lsb == 0xEE && descriptor_buffers.ms_os_string != NULL) {
+          // Microsoft OS String Descriptor probe — answer it to avoid enumeration timeout
+          prepare_ep0_data((uint8_t *)descriptor_buffers.ms_os_string,
+                           descriptor_buffers.ms_os_string[0]);
+          res = 0;
+        } else if (descriptor_buffers.string != NULL &&
+                   (descriptor_buffers.string_count == 0 ||
+                    packet->value_lsb < descriptor_buffers.string_count)) {
           ep0_desc_request_idx = packet->value_lsb;
           ep0_desc_request_type = DESC_TYPE_STRING;
           res = 0;
         }
+        // else: out-of-range index — res stays -1, will be STALLed
       }
     }
   } else if (packet->request_type == USB_REQ_DIR_OUT) {
@@ -492,7 +517,27 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
       res = 0;
     }
   } else if (packet->request_type == (USB_REQ_TYP_CLASS | USB_REQ_REC_IFACE)) {
-    if (packet->request == 0x09) {
+    // CDC ACM class requests (host-to-device)
+    if (packet->request == 0x20) {
+      // SET_LINE_CODING (7 bytes)
+      prepare_ep0_rx(cdc_line_coding, 7);
+      res = 0;
+    } else if (packet->request == 0x22) {
+      // SET_CONTROL_LINE_STATE (DTR/RTS)
+      uint16_t line_state = (uint16_t)(packet->value_lsb | (packet->value_msb << 8));
+      pio_usb_device_cdc_set_control_line_state_cb(packet->index_lsb, line_state);
+      prepare_ep0_data(NULL, 0);
+      res = 0;
+    } else if (packet->request == 0x00) {
+      // SEND_ENCAPSULATED_COMMAND: accept and ignore payload.
+      uint16_t req_len = (uint16_t)(packet->length_lsb | (packet->length_msb << 8));
+      static uint8_t encapsulated_cmd[64];
+      if (req_len > sizeof(encapsulated_cmd)) {
+        req_len = sizeof(encapsulated_cmd);
+      }
+      prepare_ep0_rx(encapsulated_cmd, (uint8_t)req_len);
+      res = 0;
+    } else if (packet->request == 0x09) {
       // set hid report
       static __unused uint8_t received_hid_report[8]; // not used
       prepare_ep0_rx(received_hid_report, 8);
@@ -506,9 +551,31 @@ static int __no_inline_not_in_flash_func(process_device_setup_stage)(uint8_t *bu
       prepare_ep0_data(NULL, 0);
       res = 0;
     }
+  } else if (packet->request_type == (USB_REQ_DIR_IN | USB_REQ_TYP_CLASS | USB_REQ_REC_IFACE)) {
+    // CDC ACM class requests (device-to-host)
+    if (packet->request == 0x21) {
+      // GET_LINE_CODING (7 bytes)
+      prepare_ep0_data(cdc_line_coding, 7);
+      res = 0;
+    } else if (packet->request == 0x01) {
+      // GET_ENCAPSULATED_RESPONSE: no response payload
+      prepare_ep0_data(NULL, 0);
+      res = 0;
+    }
   } else if (packet->request_type == (USB_REQ_REC_EP)) {
       prepare_ep0_data(NULL, 0);
       res = 0;
+  } else if (packet->request_type == (USB_REQ_DIR_IN | USB_REQ_TYP_VENDOR)) {
+    // Microsoft OS Extended Compatible ID Feature Descriptor (wIndex == 4)
+    uint16_t wIndex = (uint16_t)(packet->index_lsb | (packet->index_msb << 8));
+    if (wIndex == 0x0004 && descriptor_buffers.ms_compat_id != NULL) {
+      uint16_t desc_len = (uint16_t)(descriptor_buffers.ms_compat_id[0] |
+                          (descriptor_buffers.ms_compat_id[1] << 8));
+      uint16_t wLength = (uint16_t)(packet->length_lsb | (packet->length_msb << 8));
+      prepare_ep0_data((uint8_t *)descriptor_buffers.ms_compat_id,
+                       desc_len < wLength ? desc_len : wLength);
+      res = 0;
+    }
   }
 
   return res;
@@ -529,7 +596,10 @@ static void __no_inline_not_in_flash_func(__pio_usb_device_irq_handler)(uint8_t 
   }
 
   if (ints & PIO_USB_INTS_SETUP_REQ_BITS) {
-    process_device_setup_stage(root->setup_packet);
+    if (process_device_setup_stage(root->setup_packet) < 0) {
+      // Stall EP0-IN so the host gets a fast "not supported" instead of NAK-forever
+      PIO_USB_ENDPOINT(1)->stalled = true;
+    }
     dev->control_pipe.stage = STAGE_DATA;
   }
 
