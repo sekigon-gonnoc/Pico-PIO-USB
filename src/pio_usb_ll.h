@@ -134,8 +134,13 @@ void pio_usb_bus_prepare_receive(const pio_port_t *pp);
 int pio_usb_bus_receive_packet_and_handshake(pio_port_t *pp, uint8_t handshake);
 void pio_usb_bus_usb_transfer(pio_port_t *pp, uint8_t *data,
                               uint16_t len);
+// Transmit the last packet before an expected reply and release the receiver,
+// parked by the caller, at its EOP
+void pio_usb_bus_usb_transfer_arm_rx(pio_port_t *pp, uint8_t *data,
+                                     uint16_t len);
 
 uint8_t pio_usb_bus_wait_handshake(pio_port_t *pp);
+// An IN token is sent armed, like pio_usb_bus_usb_transfer_arm_rx()
 void pio_usb_bus_send_token(pio_port_t *pp, uint8_t token, uint8_t addr,
                             uint8_t ep_num);
 
