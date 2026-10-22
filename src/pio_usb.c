@@ -138,7 +138,10 @@ static __always_inline void usb_transfer(pio_port_t *pp, uint8_t *data,
     }
     pp->pio_usb_tx->instr_mem[pp->offset_tx] = pp->fs_tx_program->instructions[0];
   } else {
-    while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0) {
+    // An interrupt between the start and the clear above that outlasts the
+    // packet erases its EOP flag; the post-COMP stall still ends the wait
+    while ((pp->pio_usb_tx->irq & IRQ_TX_ALL_MASK) == 0 &&
+           !(pp->pio_usb_tx->fdebug & stall_mask)) {
       continue;
     }
     pp->pio_usb_tx->irq = IRQ_TX_ALL_MASK; // clear complete flag
