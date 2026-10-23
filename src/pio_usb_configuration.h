@@ -25,15 +25,29 @@ typedef struct {
 #define PIO_USB_DP_PIN_DEFAULT 0
 #endif
 
+#ifndef PIO_USB_TX_DEFAULT
 #define PIO_USB_TX_DEFAULT 0
+#endif
+#ifndef PIO_SM_USB_TX_DEFAULT
 #define PIO_SM_USB_TX_DEFAULT 0
+#endif
+#ifndef PIO_USB_DMA_TX_DEFAULT
 #define PIO_USB_DMA_TX_DEFAULT 0
+#endif
 
+#ifndef PIO_USB_RX_DEFAULT
 #define PIO_USB_RX_DEFAULT 0
+#endif
+#ifndef PIO_SM_USB_RX_DEFAULT
 #define PIO_SM_USB_RX_DEFAULT 1
+#endif
+#ifndef PIO_SM_USB_EOP_DEFAULT
 #define PIO_SM_USB_EOP_DEFAULT 2
+#endif
 
+#ifndef PIO_USB_DEBUG_PIN_NONE
 #define PIO_USB_DEBUG_PIN_NONE (-1)
+#endif
 
 #define PIO_USB_DEFAULT_CONFIG                                             \
   {                                                                        \
@@ -43,10 +57,22 @@ typedef struct {
         PIO_USB_DEBUG_PIN_NONE, false, PIO_USB_PINOUT_DPDM                 \
   }
 
+#ifndef PIO_USB_EP_POOL_CNT
 #define PIO_USB_EP_POOL_CNT 32
+#endif
+#ifndef PIO_USB_DEV_EP_CNT
 #define PIO_USB_DEV_EP_CNT 16
+#endif
+#ifndef PIO_USB_DEVICE_CNT
 #define PIO_USB_DEVICE_CNT 4
+#endif
+#ifndef PIO_USB_HUB_PORT_CNT
 #define PIO_USB_HUB_PORT_CNT 8
+#endif
+#ifndef PIO_USB_ROOT_PORT_CNT
 #define PIO_USB_ROOT_PORT_CNT 2
+#endif
 
+#ifndef PIO_USB_EP_SIZE
 #define PIO_USB_EP_SIZE 64
+#endif
