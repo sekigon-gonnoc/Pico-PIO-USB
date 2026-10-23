@@ -125,7 +125,7 @@ void core1_main() {
 
 int main() {
   // default 125MHz is not appropreate. Sysclock should be multiple of 12MHz.
-  set_sys_clock_khz(120000, true);
+  set_sys_clock_khz(180000, true);
 
   stdio_init_all();
   printf("hello!");
