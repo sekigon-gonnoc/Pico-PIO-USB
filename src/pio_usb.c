@@ -254,6 +254,15 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
   int16_t idx = 0;
 
+  // Some devices' packets (seen with a hub's status-change report) are decoded with one or more
+  // stray bits in front of the SYNC, so every byte arrives shifted (SYNC reads 0x01 instead of
+  // 0x80 for one stray bit) and the CRC check fails on every retry. The shift is found from the
+  // first two bytes, where the SYNC pattern 0x80 must appear, and the packet is realigned as it
+  // arrives: true byte n = (raw n >> shift) | (raw n+1 << (8 - shift)). The packet's last
+  // `shift` bits stay in the decoder, so the CRC check then covers 16 - shift bits.
+  uint8_t shift = 0;
+  uint8_t prev_raw = 0;
+
   // Per USB Specs 7.1.18 for turnaround: We must wait at least 2 bit times for inter-packet delay.
   // This is essential for working with LS device specially when we overlocked the mcu.
   // Pre-calculate number of cycle per bit time
@@ -280,24 +289,62 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   while (1) {
     if (pio_sm_get_rx_fifo_level(pio_usb_rx, sm_rx)) {
       uint8_t data = pio_sm_get(pio_usb_rx, sm_rx) >> 24;
-      if (idx < rx_buf_len) {
-        usb_rx_buffer[idx] = data;
-      }
       start = get_time_us_32(); // reset timeout when a byte is received
 
-      if (idx >= 2) {
-        crc_prev2 = crc_prev;
-        crc_prev = crc;
-        crc = update_usb_crc16(crc, data);
-        crc_receive = (crc_receive >> 8) | (data << 8);
-        crc_match = ((crc_receive ^ 0xffff) == crc_prev2);
+      // SYNC not at the start? Look for it in the first two bytes.
+      if (idx == 1 && prev_raw != 0x80) {
+        uint16_t const first = (uint16_t)(prev_raw | (data << 8));
+        for (uint8_t k = 1; k < 8; k++) {
+          if (((first >> k) & 0xff) == 0x80) {
+            shift = k;
+            break;
+          }
+        }
       }
+
+      if (!shift) {
+        if (idx < rx_buf_len) {
+          usb_rx_buffer[idx] = data;
+        }
+        if (idx >= 2) {
+          crc_prev2 = crc_prev;
+          crc_prev = crc;
+          crc = update_usb_crc16(crc, data);
+          crc_receive = (crc_receive >> 8) | (data << 8);
+          crc_match = ((crc_receive ^ 0xffff) == crc_prev2);
+        }
+      } else {
+        // Realigned byte idx-1 is complete now that its last bits have arrived
+        uint8_t const realigned = (uint8_t)((prev_raw >> shift) | (data << (8 - shift)));
+        if (idx - 1 < rx_buf_len) {
+          usb_rx_buffer[idx - 1] = realigned;
+        }
+        if (idx - 1 >= 2) {
+          crc_prev2 = crc_prev;
+          crc_prev = crc;
+          crc = update_usb_crc16(crc, realigned);
+          crc_receive = (crc_receive >> 8) | (realigned << 8);
+        }
+      }
+      prev_raw = data;
       idx++;
     } else if ((pio_usb_rx->irq & IRQ_RX_COMP_MASK) != 0) {
       // Exit since we've gotten an EOP.
       // Timing critical: per USB specs, handshake must be sent within 2-7 bit-time strictly
       if (turnaround_in_cycle) {
         busy_wait_at_least_cycles(turnaround_in_cycle); // wait for turnaround for LS only
+      }
+
+      // Finish a realigned packet: its last byte is missing its top `shift` bits (still in
+      // the decoder), which are the top bits of the received CRC.
+      if (shift && idx >= 4) {
+        uint8_t const last = prev_raw >> shift;
+        if (idx - 1 < rx_buf_len) {
+          usb_rx_buffer[idx - 1] = last;
+        }
+        uint16_t const received = (uint16_t)((crc_receive >> 8) | (last << 8));
+        uint16_t const mask = (uint16_t)(0xffffu >> shift);
+        crc_match = (((received ^ 0xffff) & mask) == (crc_prev & mask));
       }
 
       if (handshake == USB_PID_ACK) {
