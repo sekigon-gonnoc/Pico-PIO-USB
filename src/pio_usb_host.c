@@ -61,12 +61,28 @@ static __unused void stop_timer(void) {
   timer_active = false;
 }
 
+// Detector cycles to wait after our EOP released it, so that its first sample
+// sees SE0 through the GPIO input synchronizers rather than our last data bit
+#define RX_ARM_DELAY 7
+
+static void set_rx_arm_delay(pio_port_t *pp) {
+  if (pp->pio_usb_tx != pp->pio_usb_rx) {
+    return; // released by the CPU, see usb_transfer()
+  }
+
+  const pio_program_t *eop = pp->debug_pin_eop < 0 ? &usb_edge_detector_program
+                                                   : &usb_edge_detector_debug_program;
+  pp->pio_usb_rx->instr_mem[pp->offset_eop] =
+      eop->instructions[0] | pio_encode_delay(RX_ARM_DELAY);
+}
+
 usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
   pio_port_t *pp = PIO_USB_PIO_PORT(0);
   root_port_t *root = PIO_USB_ROOT_PORT(0);
 
   pio_usb_bus_init(pp, c, root);
   root->mode = PIO_USB_MODE_HOST;
+  set_rx_arm_delay(pp);
 
   float const cpu_freq = (float)clock_get_hz(clk_sys);
   pio_calculate_clkdiv_from_float(cpu_freq / 48000000,
@@ -534,14 +550,31 @@ bool pio_usb_host_endpoint_abort_transfer(uint8_t root_idx, uint8_t device_addre
 // Transaction helper
 //--------------------------------------------------------------------+
 
+// Park the edge detector at its EOP wait and clear the RX flags while it is
+// stopped. SM restart does not clear IRQ flags, so a DECODER_TRIGGER left by an
+// unanswered transaction (our own SOF/token seen by the still armed detector)
+// would otherwise shift a bit in before SYNC.
+static void __no_inline_not_in_flash_func(park_receiver)(const pio_port_t *pp) {
+  PIO pio = pp->pio_usb_rx;
+
+  pio_sm_set_enabled(pio, pp->sm_eop, false);
+  pio_sm_restart(pio, pp->sm_eop);
+  pio_sm_exec(pio, pp->sm_eop, pio_encode_jmp(pp->offset_eop));
+  pio->irq = IRQ_RX_ALL_MASK;
+
+  pio_usb_bus_prepare_receive(pp);
+
+  // Parks within one detector clock, long before our token has been sent
+  pio_sm_set_enabled(pio, pp->sm_eop, true);
+}
+
 static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
                                                              endpoint_t *ep) {
   int res = 0;
   uint8_t expect_pid = (ep->data_id == 1) ? USB_PID_DATA1 : USB_PID_DATA0;
 
-  pio_usb_bus_prepare_receive(pp);
+  park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
-  pio_usb_bus_start_receive(pp);
 
   int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
   uint8_t const receive_pid = pp->usb_rx_buffer[1];
@@ -593,11 +626,10 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
 
   uint16_t const xact_len = pio_usb_ll_get_transaction_len(ep);
 
-  pio_usb_bus_prepare_receive(pp);
+  park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_OUT, ep->dev_addr, ep->ep_num);
 
-  pio_usb_bus_usb_transfer(pp, ep->buffer, ep->encoded_data_len);
-  pio_usb_bus_start_receive(pp);
+  pio_usb_bus_usb_transfer_arm_rx(pp, ep->buffer, ep->encoded_data_len);
 
   pio_usb_bus_wait_handshake(pp);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
@@ -633,15 +665,14 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
   int res = 0;
 
   // Setup token
-  pio_usb_bus_prepare_receive(pp);
+  park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_SETUP, ep->dev_addr, 0);
 
   // Data
   ep->data_id = 0; // set to DATA0
-  pio_usb_bus_usb_transfer(pp, ep->buffer, ep->encoded_data_len);
+  pio_usb_bus_usb_transfer_arm_rx(pp, ep->buffer, ep->encoded_data_len);
 
   // Handshake
-  pio_usb_bus_start_receive(pp);
   const uint8_t handshake = pio_usb_bus_wait_handshake(pp);
   pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
 
