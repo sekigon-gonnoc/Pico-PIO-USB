@@ -36,6 +36,10 @@ static uint8_t sof_packet[4] = {USB_SYNC, USB_PID_SOF, 0x00, 0x10};
 static uint8_t sof_packet_encoded[4 * 2 * 7 / 6 + 2];
 static uint8_t sof_packet_encoded_len;
 static uint8_t keepalive_encoded[1];
+#if PIO_USB_ISO_RING_SIZE
+// Serializes ring ownership and reset (thread) against its use in the frame ISR
+static spin_lock_t *iso_ring_lock;
+#endif
 
 static bool sof_timer(repeating_timer_t *_rt);
 
@@ -102,6 +106,12 @@ usb_device_t *pio_usb_host_init(const pio_usb_configuration_t *c) {
   sof_packet_encoded_len =
       pio_usb_ll_encode_tx_data(sof_packet, sizeof(sof_packet), sof_packet_encoded);
   pio_usb_ll_encode_tx_data(NULL, 0, keepalive_encoded);
+
+#if PIO_USB_ISO_RING_SIZE
+  if (!iso_ring_lock) {
+    iso_ring_lock = spin_lock_init(spin_lock_claim_unused(true));
+  }
+#endif
 
   if (!c->skip_alarm_pool) {
     _alarm_pool = c->alarm_pool;
@@ -269,6 +279,151 @@ static int usb_setup_transaction(pio_port_t *pp, endpoint_t *ep);
 static int usb_in_transaction(pio_port_t *pp, endpoint_t *ep);
 static int usb_out_transaction(pio_port_t *pp, endpoint_t *ep);
 
+#if PIO_USB_ISO_RING_SIZE
+static endpoint_t *iso_ring_ep;
+static uint8_t iso_ring[PIO_USB_ISO_RING_SIZE];
+static uint32_t iso_ring_head;
+static uint32_t iso_ring_count;
+static bool iso_ring_lost;
+static bool iso_ring_marked; // last record written is a lost marker, or none written yet
+static uint8_t iso_ring_silent; // consecutive frames without a response
+
+static void __no_inline_not_in_flash_func(iso_ring_copy_in)(uint8_t const *src, uint32_t len) {
+  uint32_t const tail = (iso_ring_head + iso_ring_count) % PIO_USB_ISO_RING_SIZE;
+  uint32_t first = PIO_USB_ISO_RING_SIZE - tail;
+  if (first > len) {
+    first = len;
+  }
+  memcpy(&iso_ring[tail], src, first);
+  memcpy(iso_ring, src + first, len - first);
+  iso_ring_count += len;
+}
+
+static void __no_inline_not_in_flash_func(iso_ring_copy_out)(uint8_t *dst, uint32_t len) {
+  uint32_t first = PIO_USB_ISO_RING_SIZE - iso_ring_head;
+  if (first > len) {
+    first = len;
+  }
+  if (dst) {
+    memcpy(dst, &iso_ring[iso_ring_head], first);
+    memcpy(dst + first, iso_ring, len - first);
+  }
+  iso_ring_head = (iso_ring_head + len) % PIO_USB_ISO_RING_SIZE;
+  iso_ring_count -= len;
+}
+
+// A record longer than what the ring holds means the ring is corrupted.
+// Empty it and report a gap.
+static bool __no_inline_not_in_flash_func(iso_ring_check_len)(uint32_t len) {
+  if (len <= iso_ring_count) {
+    return true;
+  }
+  iso_ring_head = 0;
+  iso_ring_count = 0;
+  iso_ring_lost = true;
+  iso_ring_marked = false;
+  return false;
+}
+
+// Length of the record at the head of the ring, header included. A lost
+// marker (0xffff) is a record of just its two header bytes.
+static uint32_t __no_inline_not_in_flash_func(iso_ring_head_len)(void) {
+  uint16_t const value = iso_ring[iso_ring_head] |
+                         (iso_ring[(iso_ring_head + 1) % PIO_USB_ISO_RING_SIZE] << 8);
+  return value == 0xffff ? 2 : value + 2u;
+}
+
+// Make room for a new record by dropping the oldest one, so the ring always
+// holds the newest part of the stream when the application falls behind.
+// One lost marker stays at the head to show where the gap is: it is put in
+// front of the oldest surviving record, or kept there if already present.
+static void __no_inline_not_in_flash_func(iso_ring_drop_oldest)(void) {
+  if (iso_ring_count < 2 || !iso_ring_check_len(iso_ring_head_len())) {
+    iso_ring_count = 0;
+    iso_ring_lost = true;
+    iso_ring_marked = false;
+    return;
+  }
+  if (iso_ring_head_len() == 2) {
+    iso_ring_copy_out(NULL, 2); // the marker; put back below
+    if (iso_ring_count < 2 || !iso_ring_check_len(iso_ring_head_len())) {
+      return;
+    }
+  }
+  iso_ring_copy_out(NULL, iso_ring_head_len());
+  iso_ring_head = (iso_ring_head + PIO_USB_ISO_RING_SIZE - 2) % PIO_USB_ISO_RING_SIZE;
+  iso_ring_count += 2;
+  iso_ring[iso_ring_head] = 0xff;
+  iso_ring[(iso_ring_head + 1) % PIO_USB_ISO_RING_SIZE] = 0xff;
+}
+
+static void __no_inline_not_in_flash_func(iso_ring_receive)(endpoint_t *ep, int len,
+                                                           uint8_t pid, uint8_t const *data) {
+  uint8_t const lost_marker[2] = {0xff, 0xff};
+  if (len < 0) {
+    // A device polled early answers with a zero-length packet (USB 2.0
+    // 5.6.4), so no reply is a lost packet just like a corrupted one.
+    iso_ring_lost = true;
+    if (pid != USB_PID_DATA0 && pid != USB_PID_DATA1 && ++iso_ring_silent >= 32) {
+      // The device stopped streaming (alternate setting 0). Stop polling
+      // until the application queues another transfer. A transfer pending
+      // now fails on the next frame.
+      iso_ring_ep = NULL;
+    }
+    len = 0;
+  } else {
+    iso_ring_silent = 0;
+  }
+  if (iso_ring_lost) {
+    if (!iso_ring_marked) { // one marker per gap
+      while (iso_ring_count + 2 > PIO_USB_ISO_RING_SIZE) {
+        iso_ring_drop_oldest();
+      }
+      iso_ring_copy_in(lost_marker, 2);
+      iso_ring_marked = true;
+    }
+    iso_ring_lost = false;
+  }
+  if (len > 0) {
+    while (iso_ring_count + 2 + len > PIO_USB_ISO_RING_SIZE) {
+      iso_ring_drop_oldest();
+    }
+    uint8_t const header[2] = {len & 0xff, len >> 8};
+    iso_ring_copy_in(header, 2);
+    iso_ring_copy_in(data, len);
+    iso_ring_marked = false;
+  }
+
+  if (!ep->transfer_started || !ep->has_transfer || ep->transfer_aborted) {
+    return;
+  }
+  // Hand over as many whole records as fit in the transfer buffer.
+  while (iso_ring_count >= 2) {
+    uint32_t const rec_len = iso_ring_head_len();
+    if (!iso_ring_check_len(rec_len)) {
+      break;
+    }
+    if (rec_len > ep->total_len) {
+      iso_ring_drop_oldest(); // can never fit
+      if (ep->total_len < 2) {
+        // Not even the marker fits: keep the gap for a later transfer
+        iso_ring_lost = true;
+        iso_ring_marked = false;
+      }
+      continue;
+    }
+    if (ep->actual_len + rec_len > ep->total_len) {
+      break;
+    }
+    iso_ring_copy_out(ep->app_buf + ep->actual_len, rec_len);
+    ep->actual_len += rec_len;
+  }
+  if (ep->actual_len > 0) {
+    pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
+  }
+}
+#endif
+
 void __not_in_flash_func(pio_usb_host_frame)(void) {
   if (!timer_active) {
     return;
@@ -313,8 +468,27 @@ void __not_in_flash_func(pio_usb_host_frame)(void) {
           continue;
         }
 
-        if (ep->has_transfer && !ep->transfer_aborted) {
-          ep->transfer_started = true;
+#if PIO_USB_ISO_RING_SIZE
+        bool is_ring_ep = false;
+        if ((ep->attr & 0x03) == EP_ATTR_ISOCHRONOUS && (ep->ep_num & EP_IN)) {
+          uint32_t const save = spin_lock_blocking(iso_ring_lock);
+          is_ring_ep = ep == iso_ring_ep;
+          if (!is_ring_ep && ep->has_transfer && !ep->transfer_aborted) {
+            pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+          }
+          spin_unlock(iso_ring_lock, save);
+          if (!is_ring_ep) {
+            continue;
+          }
+        }
+        bool const live = ep->has_transfer && !ep->transfer_aborted;
+        bool const active = live || is_ring_ep;
+#else
+        bool const live = ep->has_transfer && !ep->transfer_aborted;
+        bool const active = live;
+#endif
+        if (active) {
+          ep->transfer_started = live;
 
           if (ep->need_pre) {
             pp->need_pre = true;
@@ -419,6 +593,16 @@ void pio_usb_host_port_reset_end(uint8_t root_idx) {
   root->suspended = false;
 }
 
+#if PIO_USB_ISO_RING_SIZE
+static void iso_ring_stop_device(uint8_t root_idx, uint8_t device_address) {
+  uint32_t const save = spin_lock_blocking(iso_ring_lock);
+  if (iso_ring_ep && iso_ring_ep->root_idx == root_idx && iso_ring_ep->dev_addr == device_address) {
+    iso_ring_ep = NULL;
+  }
+  spin_unlock(iso_ring_lock, save);
+}
+#endif
+
 void pio_usb_host_close_device(uint8_t root_idx, uint8_t device_address) {
   for (int ep_pool_idx = 0; ep_pool_idx < PIO_USB_EP_POOL_CNT; ep_pool_idx++) {
     endpoint_t *ep = PIO_USB_ENDPOINT(ep_pool_idx);
@@ -428,6 +612,9 @@ void pio_usb_host_close_device(uint8_t root_idx, uint8_t device_address) {
       ep->has_transfer = false;
     }
   }
+#if PIO_USB_ISO_RING_SIZE
+  iso_ring_stop_device(root_idx, device_address);
+#endif
 }
 
 static inline __force_inline endpoint_t * _find_ep(uint8_t root_idx, 
@@ -476,6 +663,13 @@ bool pio_usb_host_endpoint_close(uint8_t root_idx, uint8_t device_address,
   }
 
   ep->size = 0; // mark as closed
+#if PIO_USB_ISO_RING_SIZE
+  uint32_t const save = spin_lock_blocking(iso_ring_lock);
+  if (ep == iso_ring_ep) {
+    iso_ring_ep = NULL;
+  }
+  spin_unlock(iso_ring_lock, save);
+#endif
   return true;
 }
 
@@ -490,6 +684,12 @@ bool pio_usb_host_send_setup(uint8_t root_idx, uint8_t device_address,
   ep->ep_num = 0; // setup is is OUT
   ep->data_id = USB_PID_SETUP;
   ep->is_tx = true;
+
+#if PIO_USB_ISO_RING_SIZE
+  if ((setup_packet[0] & 0x60) == 0 && (setup_packet[1] == 9 || setup_packet[1] == 11)) {
+    iso_ring_stop_device(root_idx, device_address);
+  }
+#endif
 
   return pio_usb_ll_transfer_start(ep, (uint8_t *)setup_packet, 8);
 }
@@ -510,6 +710,25 @@ bool pio_usb_host_endpoint_transfer(uint8_t root_idx, uint8_t device_address,
     ep->is_tx = ep_address == 0;
     ep->data_id = 1; // data and status always start with DATA1
   }
+
+#if PIO_USB_ISO_RING_SIZE
+  if ((ep->attr & 0x03) == EP_ATTR_ISOCHRONOUS && !ep->is_tx) {
+    uint32_t const save = spin_lock_blocking(iso_ring_lock);
+    if (ep != iso_ring_ep) {
+      // Start receiving this endpoint's packets every frame. Only one
+      // isochronous IN endpoint at a time uses the ring.
+      iso_ring_head = 0;
+      iso_ring_count = 0;
+      iso_ring_lost = false;
+      iso_ring_marked = true; // no gap before the first packet
+      iso_ring_silent = 0;
+      iso_ring_ep = ep;
+    }
+    bool const ret = pio_usb_ll_transfer_start(ep, buffer, buflen);
+    spin_unlock(iso_ring_lock, save);
+    return ret;
+  }
+#endif
 
   return pio_usb_ll_transfer_start(ep, buffer, buflen);
 }
@@ -549,6 +768,12 @@ bool pio_usb_host_endpoint_abort_transfer(uint8_t root_idx, uint8_t device_addre
 //--------------------------------------------------------------------+
 // Transaction helper
 //--------------------------------------------------------------------+
+static void __no_inline_not_in_flash_func(end_transaction)(pio_port_t *pp) {
+  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+  if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
+    pio_sm_exec(pp->pio_usb_rx, pp->sm_eop, pio_encode_jmp(pp->offset_eop));
+  }
+}
 
 // Park the edge detector at its EOP wait and clear the RX flags while it is
 // stopped. SM restart does not clear IRQ flags, so a DECODER_TRIGGER left by an
@@ -576,10 +801,45 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
   park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
 
-  int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
+  bool const is_iso =
+      PIO_USB_HOST_ISOCHRONOUS && (ep->attr & 0x03) == EP_ATTR_ISOCHRONOUS;
+  // Isochronous IN has no handshake and no data toggle
+  int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, is_iso ? 0 : USB_PID_ACK);
   uint8_t const receive_pid = pp->usb_rx_buffer[1];
 
-  if (receive_len >= 0) {
+  if (is_iso && receive_len > 0) {
+    // Clamp to what usb_rx_buffer holds. A non-compliant or malicious device
+    // could otherwise report a receive_len larger than the buffer, causing an
+    // out-of-bounds memcpy.
+    if ((uint16_t)receive_len > sizeof(pp->usb_rx_buffer) - 4) {
+      receive_len = sizeof(pp->usb_rx_buffer) - 4;
+    }
+  }
+
+#if PIO_USB_ISO_RING_SIZE
+  if (is_iso) {
+    uint32_t const save = spin_lock_blocking(iso_ring_lock);
+    if (ep == iso_ring_ep) {
+      iso_ring_receive(ep, receive_len, receive_pid, &pp->usb_rx_buffer[2]);
+    }
+    spin_unlock(iso_ring_lock, save);
+  } else
+#endif
+  if (is_iso) {
+    // Every isochronous packet completes the transfer, even a full one, so
+    // the caller sees packet boundaries. A bad or missing packet is not retried.
+    if (receive_len >= 0) {
+      uint16_t const room = ep->total_len - ep->actual_len;
+      if (receive_len > room) {
+        receive_len = room;
+      }
+      memcpy(ep->app_buf, &pp->usb_rx_buffer[2], receive_len);
+      ep->actual_len += receive_len;
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
+    } else {
+      pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
+    }
+  } else if (receive_len >= 0) {
     if (receive_pid == expect_pid) {
       // Clamp to the transaction length the host actually requested/allocated
       // a buffer for. A non-compliant or malicious device could otherwise
@@ -613,7 +873,7 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
     ep->failed_count = 0; // reset failed count if we got a sound response
   }
 
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+  end_transaction(pp);
   pp->usb_rx_buffer[0] = 0;
   pp->usb_rx_buffer[1] = 0;
 
@@ -632,7 +892,7 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
   pio_usb_bus_usb_transfer_arm_rx(pp, ep->buffer, ep->encoded_data_len);
 
   pio_usb_bus_wait_handshake(pp);
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+  end_transaction(pp);
 
   uint8_t const receive_token = pp->usb_rx_buffer[1];
 
@@ -653,7 +913,7 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
     ep->failed_count = 0;// reset failed count if we got a sound response
   }
 
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+  end_transaction(pp);
   pp->usb_rx_buffer[0] = 0;
   pp->usb_rx_buffer[1] = 0;
 
@@ -674,7 +934,7 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
 
   // Handshake
   const uint8_t handshake = pio_usb_bus_wait_handshake(pp);
-  pio_sm_set_enabled(pp->pio_usb_rx, pp->sm_rx, false);
+  end_transaction(pp);
 
   if (handshake == USB_PID_ACK) {
     ep->actual_len = 8;

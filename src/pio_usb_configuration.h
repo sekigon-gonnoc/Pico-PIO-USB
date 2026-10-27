@@ -50,3 +50,21 @@ typedef struct {
 #define PIO_USB_ROOT_PORT_CNT 2
 
 #define PIO_USB_EP_SIZE 64
+
+// Host support for isochronous IN endpoints.
+#ifndef PIO_USB_ISO_RING_SIZE
+#define PIO_USB_ISO_RING_SIZE 0
+#endif
+#ifndef PIO_USB_HOST_ISOCHRONOUS
+#define PIO_USB_HOST_ISOCHRONOUS (PIO_USB_ISO_RING_SIZE > 0)
+#endif
+
+// RX packet buffer: SYNC + PID + data + CRC16. Full speed isochronous
+// packets carry up to 1023 bytes of data.
+#ifndef PIO_USB_RX_BUFFER_SIZE
+#if PIO_USB_HOST_ISOCHRONOUS
+#define PIO_USB_RX_BUFFER_SIZE 1028
+#else
+#define PIO_USB_RX_BUFFER_SIZE 128
+#endif
+#endif

@@ -86,7 +86,7 @@ typedef struct {
   bool need_pre;
   bool low_speed;
 
-  uint8_t usb_rx_buffer[128];
+  uint8_t usb_rx_buffer[PIO_USB_RX_BUFFER_SIZE];
 } pio_port_t;
 
 //--------------------------------------------------------------------+

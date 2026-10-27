@@ -306,6 +306,12 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
           usb_transfer(pp, ack_encoded, 5, false);
           return idx - 4;
         }
+      } else if (handshake == 0) {
+        // Isochronous: no handshake is sent
+        if (idx >= 4 && idx <= rx_buf_len && crc_match &&
+            (usb_rx_buffer[1] == USB_PID_DATA0 || usb_rx_buffer[1] == USB_PID_DATA1)) {
+          return idx - 4;
+        }
       } else if (handshake == USB_PID_NAK) {
         usb_transfer(pp, nak_encoded, 5, false);
       } else {
