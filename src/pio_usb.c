@@ -276,8 +276,18 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
 
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
   // This is to detect packets without an EOP because the device was unplugged.
+  //
+  // The 7 us timeout resets on every received byte, so a babbling bus or a
+  // wedged RX state machine that keeps producing data can hold this loop
+  // indefinitely. Bound the total packet time: the longest legitimate
+  // packet (64-byte data, low speed, bit-stuffed) completes well under
+  // 500 us.
+  uint32_t const abs_start = get_time_us_32();
   uint32_t start = get_time_us_32();
   while (1) {
+    if (get_time_us_32() - abs_start > 500) {
+      return -1;
+    }
     if (pio_sm_get_rx_fifo_level(pio_usb_rx, sm_rx)) {
       uint8_t data = pio_sm_get(pio_usb_rx, sm_rx) >> 24;
       if (idx < rx_buf_len) {
