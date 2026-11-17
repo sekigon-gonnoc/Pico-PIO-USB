@@ -43,6 +43,15 @@ jobs:
         ref: ${{ matrix.sdk_version }}
         path: pico-sdk
 
+    - name: Fix pioasm for GCC 15
+      run: |
+        # pioasm before SDK 2.2.0 uses uint8_t without including <cstdint>,
+        # which GCC 15 no longer pulls in through other headers
+        for f in pio_types.h output_format.h; do
+          h=$PICO_SDK_PATH/tools/pioasm/$f
+          grep -q "<cstdint>" $h || sed -i "1i #include <cstdint>" $h
+        done
+
     - name: Checkout TinyUSB
       run: |
         # checkout tinyusb in pico-sdk and switch to master branch
@@ -51,6 +60,10 @@ jobs:
         git -C $PICO_SDK_PATH/lib/tinyusb checkout master
 
     - name: Build
+      env:
+        # The older SDKs build their host tools (pioasm, picotool) with
+        # cmake_minimum_required below 3.5, which CMake 4 rejects
+        CMAKE_POLICY_VERSION_MINIMUM: 3.5
       run: |
         mkdir -p examples/build
         cd examples/build
