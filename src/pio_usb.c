@@ -257,11 +257,8 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp
 
 int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
     pio_port_t *pp, uint8_t handshake) {
+  const uint16_t crc16_usb_residue = 0xb001;
   uint16_t crc = 0xffff;
-  uint16_t crc_prev = 0xffff;
-  uint16_t crc_prev2 = 0xffff;
-  uint16_t crc_receive = 0xffff;
-  bool crc_match = false;
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
   int16_t idx = 0;
 
@@ -297,11 +294,8 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       start = get_time_us_32(); // reset timeout when a byte is received
 
       if (idx >= 2) {
-        crc_prev2 = crc_prev;
-        crc_prev = crc;
+        // Skip SYNC and PID. Include the two received CRC bytes.
         crc = update_usb_crc16(crc, data);
-        crc_receive = (crc_receive >> 8) | (data << 8);
-        crc_match = ((crc_receive ^ 0xffff) == crc_prev2);
       }
       idx++;
     } else if ((pio_usb_rx->irq & IRQ_RX_COMP_MASK) != 0) {
@@ -312,8 +306,8 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       }
 
       if (handshake == USB_PID_ACK) {
-        // Only ACK if crc matches
-        if (idx >= 4 && crc_match) {
+        // A valid DATA packet leaves this residue before the final XOR.
+        if (idx >= 4 && crc == crc16_usb_residue) {
           usb_transfer(pp, ack_encoded, 5, false);
           return idx - 4;
         }
