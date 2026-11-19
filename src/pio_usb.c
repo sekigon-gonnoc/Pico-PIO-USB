@@ -23,6 +23,12 @@
 #include "pio_usb_configuration.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
+#if defined(USB_PACKET_CAPTURE_DEBUG) && USB_PACKET_CAPTURE_DEBUG
+#include "usb_capture.h"
+#define USB_CAPTURE_SEQUENCE_START(pp) usb_capture_sequence_start((pp)->low_speed)
+#else
+#define USB_CAPTURE_SEQUENCE_START(pp) ((void)0)
+#endif
 
 #define UNUSED_PARAMETER(x) (void)x
 
@@ -180,6 +186,11 @@ void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
 
   uint8_t packet_encoded[sizeof(packet) * 2 * 7 / 6 + 2];
   uint8_t encoded_len = pio_usb_ll_encode_tx_data(packet, sizeof(packet), packet_encoded);
+
+  /* SOF uses pio_usb_bus_usb_transfer() directly. This path is only used for
+   * IN/OUT/SETUP transactions, so an armed monitor starts on the first
+   * non-SOF host communication sequence. */
+  USB_CAPTURE_SEQUENCE_START(pp);
 
   // Only IN is answered by the device; SETUP/OUT is followed by our DATA, so
   // keep the arming checks out of that gap.
