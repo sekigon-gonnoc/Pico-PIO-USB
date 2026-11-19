@@ -26,7 +26,8 @@ jobs:
           # pico2 is supported from sdk 2.0.0
           - sdk_version: '1.5.1'
             board: 'pico2'
-    runs-on: ubuntu-latest
+    # The older SDKs in this matrix need a compatible host toolchain.
+    runs-on: ubuntu-24.04
     steps:
     - name: Install ARM GCC
       uses: carlosperate/arm-none-eabi-gcc-action@v1
