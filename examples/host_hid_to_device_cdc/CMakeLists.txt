@@ -1,6 +1,15 @@
 set(target_name host_hid_to_device_cdc)
 add_executable(${target_name})
 
+option(USB_PACKET_CAPTURE_DEBUG "Enable packet capture on the example CDC port" OFF)
+if(USB_PACKET_CAPTURE_DEBUG)
+    target_compile_definitions(${target_name} PRIVATE USB_PACKET_CAPTURE_DEBUG=1)
+    target_sources(${target_name} PRIVATE
+        capture_cdc.c
+        ../../src/usb_capture.c
+    )
+endif()
+
 target_sources(${target_name} PRIVATE
  host_hid_to_device_cdc.c
  usb_descriptors.c

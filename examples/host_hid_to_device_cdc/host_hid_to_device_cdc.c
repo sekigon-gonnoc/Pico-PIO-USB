@@ -41,10 +41,16 @@
 #include "pio_usb.h"
 #include "tusb.h"
 
+#if USB_PACKET_CAPTURE_DEBUG
+#include "capture_cdc.h"
+#include "usb_capture.h"
+#endif
+
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
 
+#if !USB_PACKET_CAPTURE_DEBUG
 // uncomment if you are using colemak layout
 // #define KEYBOARD_COLEMAK
 
@@ -64,6 +70,7 @@ const uint8_t colemak[128] = {
 #endif
 
 static uint8_t const keycode2ascii[128][2] =  { HID_KEYCODE_TO_ASCII };
+#endif
 
 /*------------- MAIN -------------*/
 
@@ -80,8 +87,17 @@ void core1_main() {
   // port1) on core1
   tuh_init(1);
 
+#if USB_PACKET_CAPTURE_DEBUG
+  usb_capture_init(&pio_cfg);
+#endif
+
   while (true) {
+#if USB_PACKET_CAPTURE_DEBUG
+    tuh_task_ext(1, false);
+    usb_capture_task();
+#else
     tuh_task(); // tinyusb host task
+#endif
   }
 }
 
@@ -100,7 +116,12 @@ int main(void) {
   tud_init(0);
 
   while (true) {
+#if USB_PACKET_CAPTURE_DEBUG
+    tud_task_ext(1, false);
+    capture_cdc_task();
+#else
     tud_task(); // tinyusb device task
+#endif
     tud_cdc_write_flush();
   }
 
@@ -111,6 +132,7 @@ int main(void) {
 // Device CDC
 //--------------------------------------------------------------------+
 
+#if !USB_PACKET_CAPTURE_DEBUG
 // Invoked when CDC interface received data from host
 void tud_cdc_rx_cb(uint8_t itf)
 {
@@ -122,6 +144,7 @@ void tud_cdc_rx_cb(uint8_t itf)
   // TODO control LED on keyboard of host stack
   (void) count;
 }
+#endif
 
 //--------------------------------------------------------------------+
 // Host HID
@@ -137,9 +160,12 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
   (void)desc_report;
   (void)desc_len;
 
-  // Interface protocol (hid_interface_protocol_enum_t)
+#if !USB_PACKET_CAPTURE_DEBUG
   const char* protocol_str[] = { "None", "Keyboard", "Mouse" };
+#endif
+  // Interface protocol (hid_interface_protocol_enum_t)
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
+#if !USB_PACKET_CAPTURE_DEBUG
 
   uint16_t vid, pid;
   tuh_vid_pid_get(dev_addr, &vid, &pid);
@@ -149,18 +175,24 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
 
   tud_cdc_write(tempbuf, count);
   tud_cdc_write_flush();
+#endif
 
   // Receive report from boot keyboard & mouse only
   // tuh_hid_report_received_cb() will be invoked when report is available
   if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD || itf_protocol == HID_ITF_PROTOCOL_MOUSE)
   {
+#if USB_PACKET_CAPTURE_DEBUG
+    tuh_hid_receive_report(dev_addr, instance);
+#else
     if ( !tuh_hid_receive_report(dev_addr, instance) )
     {
       tud_cdc_write_str("Error: cannot request report\r\n");
     }
+#endif
   }
 }
 
+#if !USB_PACKET_CAPTURE_DEBUG
 // Invoked when device with hid interface is un-mounted
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
 {
@@ -242,10 +274,16 @@ static void process_mouse_report(uint8_t dev_addr, hid_mouse_report_t const * re
   tud_cdc_write_flush();
 }
 
+#endif
+
 // Invoked when received report from device via interrupt endpoint
 void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
   (void) len;
+#if USB_PACKET_CAPTURE_DEBUG
+  (void) report;
+  tuh_hid_receive_report(dev_addr, instance);
+#else
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
   switch(itf_protocol)
@@ -266,4 +304,5 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   {
     tud_cdc_write_str("Error: cannot request report\r\n");
   }
+#endif
 }

@@ -132,6 +132,8 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
 
 void pio_usb_bus_prepare_receive(const pio_port_t *pp);
 int pio_usb_bus_receive_packet_and_handshake(pio_port_t *pp, uint8_t handshake);
+// Host only, after sending a full-speed IN token without PRE.
+int pio_usb_bus_receive_fs_packet_and_ack(pio_port_t *pp, const root_port_t *root);
 void pio_usb_bus_usb_transfer(pio_port_t *pp, uint8_t *data,
                               uint16_t len);
 // Transmit the last packet before an expected reply and release the receiver,

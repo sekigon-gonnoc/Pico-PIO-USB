@@ -18,6 +18,14 @@
 #include "pio_usb.h"
 #include "pio_usb_ll.h"
 #include "usb_crc.h"
+#if defined(USB_PACKET_CAPTURE_DEBUG) && USB_PACKET_CAPTURE_DEBUG
+#include "usb_capture.h"
+#define USB_CAPTURE_REPORT_ERROR() usb_capture_freeze()
+#define USB_CAPTURE_ACK_SUCCESS() usb_capture_ack_success()
+#else
+#define USB_CAPTURE_REPORT_ERROR() ((void)0)
+#define USB_CAPTURE_ACK_SUCCESS() ((void)0)
+#endif
 
 enum {
   TRANSACTION_MAX_RETRY = 3, // Number of times to retry a failed transaction
@@ -251,6 +259,7 @@ static bool __no_inline_not_in_flash_func(connection_check)(root_port_t *port) {
       for (int ep_idx = 0; ep_idx < PIO_USB_EP_POOL_CNT; ep_idx++) {
         endpoint_t *ep = PIO_USB_ENDPOINT(ep_idx);
         if ((ep->root_idx == root_idx) && ep->size && ep->has_transfer) {
+          USB_CAPTURE_REPORT_ERROR();
           pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
         }
       }
@@ -576,11 +585,15 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
   park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
 
-  int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
+  const bool direct_ack = !pp->low_speed && !pp->need_pre;
+  int receive_len = direct_ack
+                        ? pio_usb_bus_receive_fs_packet_and_ack(pp, PIO_USB_ROOT_PORT(ep->root_idx))
+                        : pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
   uint8_t const receive_pid = pp->usb_rx_buffer[1];
 
   if (receive_len >= 0) {
     if (receive_pid == expect_pid) {
+      USB_CAPTURE_ACK_SUCCESS();
       // Clamp to the transaction length the host actually requested/allocated
       // a buffer for. A non-compliant or malicious device could otherwise
       // report a receive_len larger than ep->app_buf (or usb_rx_buffer),
@@ -600,6 +613,7 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
     res = -1;
+    USB_CAPTURE_REPORT_ERROR();
     if ((pp->pio_usb_rx->irq & IRQ_RX_COMP_MASK) == 0) {
       res = -2;
     }
@@ -644,6 +658,7 @@ static int __no_inline_not_in_flash_func(usb_out_transaction)(pio_port_t *pp,
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_STALLED_BITS);
   } else {
     res = -1;
+    USB_CAPTURE_REPORT_ERROR();
     if (++ep->failed_count >= TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);
     }
@@ -681,6 +696,7 @@ static int __no_inline_not_in_flash_func(usb_setup_transaction)(
     pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_COMPLETE_BITS);
   } else {
     res = -1;
+    USB_CAPTURE_REPORT_ERROR();
     ep->data_id = USB_PID_SETUP; // retry setup
     if (++ep->failed_count >= TRANSACTION_MAX_RETRY) {
       pio_usb_ll_transfer_complete(ep, PIO_USB_INTS_ENDPOINT_ERROR_BITS);

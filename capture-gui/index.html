@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico-PIO-USB Capture</title>
+  <link rel="stylesheet" href="style.css?v=status-stable-2">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>USB packet capture</h1>
+        <p class="lede">Capture and inspect the USB bus directly from the device.</p>
+      </div>
+      <div class="connection">
+        <span id="connection-state" class="badge disconnected">Disconnected</span>
+        <button id="connect">Connect</button>
+        <button id="disconnect" class="secondary" disabled>Disconnect</button>
+      </div>
+    </header>
+
+    <section class="toolbar panel">
+      <div class="toolbar-actions">
+        <button id="arm" disabled>Arm / Resume</button>
+        <button id="freeze" class="secondary" disabled>Save now</button>
+        <button id="download" class="secondary" disabled>Fetch capture</button>
+        <button id="copy-current" class="secondary" disabled>Copy current capture</button>
+        <button id="clear" class="danger" disabled>Clear buffer</button>
+        <label class="capture-filter"><input id="ack-only" type="checkbox" disabled>Auto-save on valid IN DATA+ACK; show ACKed IN only</label>
+      </div>
+      <span id="status" class="status">Connect to a device to begin.</span>
+    </section>
+    <p id="capture-export-state" class="muted failed-capture-state">No capture loaded.</p>
+
+    <section class="summary">
+      <div class="metric panel"><span>Capture</span><strong id="capture-state">—</strong></div>
+      <div class="metric panel"><span>Bus speed</span><strong id="bus-speed">—</strong></div>
+      <div class="metric panel"><span>Packet boundary</span><strong id="packet-boundary">—</strong></div>
+      <div class="metric panel"><span>Samples</span><strong id="sample-count">—</strong></div>
+      <div class="metric panel"><span>Sample rate</span><strong id="sample-rate">—</strong></div>
+    </section>
+
+    <section class="panel statistics-panel" aria-labelledby="statistics-title">
+      <div class="section-heading">
+        <h2 id="statistics-title">Continuous ACK latency</h2>
+        <button id="continuous" disabled>Start continuous capture</button>
+      </div>
+      <p id="statistics-count" class="muted">No captures in this session.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Speed</th><th>ACKs</th><th>Min</th><th>Median</th><th>Mean</th><th>P95</th><th>Max</th><th>Std. dev.</th></tr></thead>
+          <tbody id="statistics"><tr><td colspan="8" class="empty">Waiting for measurements.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="statistics-note muted">Latency is measured from DATA's SE0→J edge to ACK's J→K edge.</p>
+    </section>
+
+    <section class="panel waveform-panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">RAW BUS SIGNAL</p><h2>Waveform</h2></div>
+        <div class="wave-controls">
+          <span id="wave-info" class="muted">Fetch a capture and select a packet.</span>
+          <button id="wave-zoom-out" class="secondary" type="button" aria-label="Zoom out">−</button>
+          <button id="wave-fit" class="secondary" type="button">Fit transaction</button>
+          <button id="wave-zoom-in" class="secondary" type="button" aria-label="Zoom in">+</button>
+        </div>
+      </div>
+      <div class="waveform-scroll"><canvas id="waveform" aria-label="Decoded USB D plus and D minus waveform"></canvas></div>
+      <p class="wave-legend"><span class="legend-dp">D+</span><span class="legend-dm">D−</span><span>Colored bands mark decoded packets; labels show PID and token fields.</span></p>
+    </section>
+
+    <section class="panel packets-panel">
+      <div class="section-heading"><div><p class="eyebrow">DECODED TRAFFIC</p><h2>Packets</h2></div><span id="packet-count" class="muted">No capture loaded</span></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>#</th><th>Start (µs)</th><th>Gap from SE0→J (packet bt / µs)</th><th>Length (packet bt)</th><th>Type</th><th>Address</th><th>Data</th><th>Result</th></tr></thead>
+          <tbody id="packet-list"><tr><td colspan="8" class="empty">Fetch a capture to decode USB traffic.</td></tr></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel details-panel">
+      <div class="section-heading"><div><p class="eyebrow">INSPECT</p><h2>Packet details</h2></div><span id="detail-title" class="muted">Select a packet</span></div>
+      <pre id="packet-details" class="details">Packet fields, raw bytes, and decoder diagnostics appear here.</pre>
+    </section>
+    <footer>Web Serial requires a supported browser and a secure context (HTTPS or localhost). Capture samples are decoded in the browser.</footer>
+  </main>
+  <script type="module" src="app.js?v=capture-export-4"></script>
+</body>
+</html>
