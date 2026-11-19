@@ -38,6 +38,7 @@ root_port_t pio_usb_root_port[PIO_USB_ROOT_PORT_CNT];
 endpoint_t pio_usb_ep_pool[PIO_USB_EP_POOL_CNT];
 
 static uint8_t ack_encoded[5];
+static uint32_t ack_tail_words[sizeof(ack_encoded)];
 static uint8_t nak_encoded[5];
 static uint8_t stall_encoded[5];
 static uint8_t pre_encoded[5];
@@ -185,25 +186,51 @@ static __always_inline void wait_for_fs_ack_end(PIO pio, pio_sm_hw_t *tx_sm,
   }
 }
 
-static __always_inline void usb_transfer_fs_ack(
-    PIO pio, pio_sm_hw_t *tx_sm, io_wo_32 *fifo, uint32_t start_instr,
-    uint32_t stall_mask) {
-  // The IN token's TX tail has drained while the device sent DATA. The joined
-  // FIFO holds all five ACK bytes. Put each byte at the top of its word for
-  // the transmitter's left-shifting OSR and 8-bit autopull.
-  uint32_t irq_status = save_and_disable_interrupts();
+static bool __no_inline_not_in_flash_func(prepare_fs_ack)(pio_port_t *pp,
+                                                          uint32_t stall_mask) {
+  PIO pio = pp->pio_usb_tx;
+  uint sm = pp->sm_tx;
+  // Wait until the IN token's COMP and padding have drained. RX remains armed.
+  if (!(pio->fdebug & stall_mask)) {
+    const uint32_t start = get_time_us_32();
+    do {
+      if (get_time_us_32() - start > 1) return false;
+    } while (!(pio->fdebug & stall_mask));
+  }
+  pio_sm_set_enabled(pio, sm, false);
+  const uint16_t start_j = pp->fs_tx_program->instructions[4];
+  const uint16_t start_k = start_j ^ pio_encode_sideset(2, 3);
+  pio->instr_mem[pp->offset_tx + 4] = start_k | pio_encode_delay(3);
+  pio_sm_exec(pio, sm, pp->tx_start_instr);
+  for (uint i = 0; i < sizeof(ack_encoded); i++) {
+    pio_sm_put(pio, sm, ack_tail_words[i]);
+  }
   pio->irq = IRQ_TX_ALL_MASK;
-  tx_sm->instr = start_instr;
-  *fifo = (uint32_t)ack_encoded[0] << 24;
-  *fifo = (uint32_t)ack_encoded[1] << 24;
-  *fifo = (uint32_t)ack_encoded[2] << 24;
-  *fifo = (uint32_t)ack_encoded[3] << 24;
-  *fifo = (uint32_t)ack_encoded[4] << 24;
-  // Clear any stall from the start of TX only after all bytes are queued.
   pio->fdebug = stall_mask;
-  restore_interrupts(irq_status);
+  return true;
+}
 
-  wait_for_fs_ack_end(pio, tx_sm, stall_mask);
+static void __no_inline_not_in_flash_func(restore_fs_tx)(pio_port_t *pp, bool sent) {
+  PIO pio = pp->pio_usb_tx;
+  pio->instr_mem[pp->offset_tx + 4] = pp->fs_tx_program->instructions[4];
+  if (!sent) {
+    pio_sm_clear_fifos(pio, pp->sm_tx);
+    // Park on the J-side OUT with the pins still released.
+    pio_sm_exec(pio, pp->sm_tx, pio_encode_jmp(pp->offset_tx + 1) |
+                              (pp->tx_start_instr & pio_encode_sideset(2, 3)));
+    pio_sm_set_enabled(pio, pp->sm_tx, true);
+  }
+}
+
+static __always_inline bool wait_for_fs_ack_start(uint32_t bus_mask, uint32_t idle_j) {
+  // The PIO flags EOP during SE0. GPIO inputs have the RX invert override.
+  if ((gpio_get_all() & bus_mask) != idle_j) {
+    const uint32_t start = get_time_us_32();
+    do {
+      if (get_time_us_32() - start > 1) return false;
+    } while ((gpio_get_all() & bus_mask) != idle_j);
+  }
+  return true;
 }
 
 void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
@@ -289,7 +316,8 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp
 }
 
 static __always_inline int receive_packet_and_handshake(
-    pio_port_t *pp, uint8_t handshake, bool direct_fs_ack) {
+    pio_port_t *pp, uint8_t handshake, bool direct_fs_ack,
+    const root_port_t *fs_ack_root) {
   const uint16_t crc16_usb_residue = 0xb001;
   uint16_t crc = 0xffff;
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
@@ -309,19 +337,27 @@ static __always_inline int receive_packet_and_handshake(
   PIO tx_pio = NULL;
   pio_sm_hw_t *tx_sm = NULL;
   uint32_t tx_stall_mask = 0;
-  io_wo_32 *tx_fifo = NULL;
-  uint32_t tx_start_instr = 0;
+  io_rw_32 *tx_ctrl_set = NULL;
+  uint32_t tx_launch_mask = 0;
+  uint32_t bus_mask = 0;
+  uint32_t idle_j = 0;
   if (direct_fs_ack) {
     tx_pio = pp->pio_usb_tx;
     tx_sm = &tx_pio->sm[pp->sm_tx];
     tx_stall_mask = 1u << (PIO_FDEBUG_TXSTALL_LSB + pp->sm_tx);
-    tx_fifo = &tx_pio->txf[pp->sm_tx];
-    tx_start_instr = pp->tx_start_instr;
-    // Keep the address calculations before RX polling and out of turnaround.
-    __asm volatile("" : "+r"(tx_sm), "+r"(tx_fifo), "+r"(tx_stall_mask));
+    uint32_t const tx_enable_mask = 1u << pp->sm_tx;
+    tx_ctrl_set = hw_set_alias(&tx_pio->ctrl);
+    tx_launch_mask = tx_enable_mask | (tx_enable_mask << PIO_CTRL_CLKDIV_RESTART_LSB);
+    idle_j = 1u << fs_ack_root->pin_dm;
+    bus_mask = (1u << fs_ack_root->pin_dp) | idle_j;
+    __asm volatile("" : "+r"(tx_ctrl_set), "+r"(tx_launch_mask),
+                        "+r"(bus_mask), "+r"(idle_j));
   }
 
   if (!pio_usb_bus_wait_for_rx_start(pp)) {
+    return -1;
+  }
+  if (direct_fs_ack && !prepare_fs_ack(pp, tx_stall_mask)) {
     return -1;
   }
 
@@ -358,7 +394,10 @@ static __always_inline int receive_packet_and_handshake(
         // A valid DATA packet leaves this residue before the final XOR.
         if (idx >= 4 && crc == crc16_usb_residue) {
           if (direct_fs_ack) {
-            usb_transfer_fs_ack(tx_pio, tx_sm, tx_fifo, tx_start_instr, tx_stall_mask);
+            if (!wait_for_fs_ack_start(bus_mask, idle_j)) break;
+            *tx_ctrl_set = tx_launch_mask;
+            wait_for_fs_ack_end(tx_pio, tx_sm, tx_stall_mask);
+            restore_fs_tx(pp, true);
           } else {
             usb_transfer(pp, ack_encoded, 5, false);
           }
@@ -371,21 +410,24 @@ static __always_inline int receive_packet_and_handshake(
       }
       break;
     } else if (get_time_us_32() - start > 7) {
-      return -1; // device is probably unplugged
+      break; // device is probably unplugged
     }
   }
 
+  if (direct_fs_ack) {
+    restore_fs_tx(pp, false);
+  }
   return -1;
 }
 
 int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
     pio_port_t *pp, uint8_t handshake) {
-  return receive_packet_and_handshake(pp, handshake, false);
+  return receive_packet_and_handshake(pp, handshake, false, NULL);
 }
 
 int __no_inline_not_in_flash_func(pio_usb_bus_receive_fs_packet_and_ack)(
-    pio_port_t *pp) {
-  return receive_packet_and_handshake(pp, USB_PID_ACK, true);
+    pio_port_t *pp, const root_port_t *root) {
+  return receive_packet_and_handshake(pp, USB_PID_ACK, true, root);
 }
 
 static __always_inline void add_pio_host_rx_program(PIO pio,
@@ -518,6 +560,16 @@ void pio_usb_bus_init(pio_port_t *pp, const pio_usb_configuration_t *c,
   // pre-encode handshake packets
   uint8_t raw_packet[] = {USB_SYNC, USB_PID_ACK};
   pio_usb_ll_encode_tx_data(raw_packet, 2, ack_encoded);
+  // Slot 4 emits the first K and wraps to slot 1, which emits the next J
+  // before consuming a FIFO symbol. The FIFO must start with the third bit.
+  const uint32_t padding = (PIO_USB_TX_ENCODED_DATA_K << 2) |
+                           PIO_USB_TX_ENCODED_DATA_K;
+  for (uint i = 0; i < sizeof(ack_encoded); i++) {
+    const uint32_t next = i + 1 < sizeof(ack_encoded)
+                              ? ack_encoded[i + 1] >> 4
+                              : padding;
+    ack_tail_words[i] = ((uint32_t)ack_encoded[i] << 28) | (next << 24);
+  }
   raw_packet[1] = USB_PID_NAK;
   pio_usb_ll_encode_tx_data(raw_packet, 2, nak_encoded);
   raw_packet[1] = USB_PID_STALL;
