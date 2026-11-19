@@ -173,6 +173,39 @@ void __not_in_flash_func(pio_usb_bus_usb_transfer_arm_rx)(pio_port_t *pp,
   usb_transfer(pp, data, len, true);
 }
 
+static __always_inline void wait_for_fs_ack_end(PIO pio, pio_sm_hw_t *tx_sm,
+                                                uint32_t stall_mask) {
+  while ((pio->irq & IRQ_TX_ALL_MASK) == 0) {
+    continue;
+  }
+  pio->irq = IRQ_TX_ALL_MASK;
+  while (tx_sm->addr < PIO_USB_TX_ENCODED_DATA_COMP &&
+         !(pio->fdebug & stall_mask)) {
+    continue;
+  }
+}
+
+static __always_inline void usb_transfer_fs_ack(
+    PIO pio, pio_sm_hw_t *tx_sm, io_wo_32 *fifo, uint32_t start_instr,
+    uint32_t stall_mask) {
+  // The IN token's TX tail has drained while the device sent DATA. The joined
+  // FIFO holds all five ACK bytes. Put each byte at the top of its word for
+  // the transmitter's left-shifting OSR and 8-bit autopull.
+  uint32_t irq_status = save_and_disable_interrupts();
+  pio->irq = IRQ_TX_ALL_MASK;
+  tx_sm->instr = start_instr;
+  *fifo = (uint32_t)ack_encoded[0] << 24;
+  *fifo = (uint32_t)ack_encoded[1] << 24;
+  *fifo = (uint32_t)ack_encoded[2] << 24;
+  *fifo = (uint32_t)ack_encoded[3] << 24;
+  *fifo = (uint32_t)ack_encoded[4] << 24;
+  // Clear any stall from the start of TX only after all bytes are queued.
+  pio->fdebug = stall_mask;
+  restore_interrupts(irq_status);
+
+  wait_for_fs_ack_end(pio, tx_sm, stall_mask);
+}
+
 void __no_inline_not_in_flash_func(pio_usb_bus_send_token)(pio_port_t *pp,
                                                            uint8_t token,
                                                            uint8_t addr,
@@ -255,12 +288,12 @@ uint8_t __no_inline_not_in_flash_func(pio_usb_bus_wait_handshake)(pio_port_t* pp
   return pp->usb_rx_buffer[1];
 }
 
-int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
-    pio_port_t *pp, uint8_t handshake) {
+static __always_inline int receive_packet_and_handshake(
+    pio_port_t *pp, uint8_t handshake, bool direct_fs_ack) {
   const uint16_t crc16_usb_residue = 0xb001;
   uint16_t crc = 0xffff;
   const uint16_t rx_buf_len = sizeof(pp->usb_rx_buffer) / sizeof(pp->usb_rx_buffer[0]);
-  int16_t idx = 0;
+  uint32_t idx = 0;
 
   // Per USB Specs 7.1.18 for turnaround: We must wait at least 2 bit times for inter-packet delay.
   // This is essential for working with LS device specially when we overlocked the mcu.
@@ -269,8 +302,23 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // - Fullspeed 1 bit time = (cpufreq / 12 Mhz) = clk_div_fs_tx.div_int*48Mhz / 12 Mhz = 4 * clk_div_fs_tx.div_int
   // Since there is also overhead, we only wait 1.5 bit for LS and no wait for FS
   uint32_t turnaround_in_cycle = 0;
-  if (pp->low_speed) {
+  if (!direct_fs_ack && pp->low_speed) {
     turnaround_in_cycle = 6 * pp->clk_div_ls_tx.div_int; // 1.5 bit time
+  }
+
+  PIO tx_pio = NULL;
+  pio_sm_hw_t *tx_sm = NULL;
+  uint32_t tx_stall_mask = 0;
+  io_wo_32 *tx_fifo = NULL;
+  uint32_t tx_start_instr = 0;
+  if (direct_fs_ack) {
+    tx_pio = pp->pio_usb_tx;
+    tx_sm = &tx_pio->sm[pp->sm_tx];
+    tx_stall_mask = 1u << (PIO_FDEBUG_TXSTALL_LSB + pp->sm_tx);
+    tx_fifo = &tx_pio->txf[pp->sm_tx];
+    tx_start_instr = pp->tx_start_instr;
+    // Keep the address calculations before RX polling and out of turnaround.
+    __asm volatile("" : "+r"(tx_sm), "+r"(tx_fifo), "+r"(tx_stall_mask));
   }
 
   if (!pio_usb_bus_wait_for_rx_start(pp)) {
@@ -280,13 +328,14 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   // Timing Critical: use local variable to reduce de-reference
   PIO pio_usb_rx = pp->pio_usb_rx;
   uint sm_rx =  pp->sm_rx;
+  uint32_t const rx_empty_mask = 1u << (PIO_FSTAT_RXEMPTY_LSB + sm_rx);
   uint8_t *usb_rx_buffer = pp->usb_rx_buffer;
 
   // Timeout in seven microseconds. That is enough time to receive one byte at low speed.
   // This is to detect packets without an EOP because the device was unplugged.
   uint32_t start = get_time_us_32();
   while (1) {
-    if (pio_sm_get_rx_fifo_level(pio_usb_rx, sm_rx)) {
+    if (!(pio_usb_rx->fstat & rx_empty_mask)) {
       uint8_t data = pio_sm_get(pio_usb_rx, sm_rx) >> 24;
       if (idx < rx_buf_len) {
         usb_rx_buffer[idx] = data;
@@ -308,7 +357,11 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
       if (handshake == USB_PID_ACK) {
         // A valid DATA packet leaves this residue before the final XOR.
         if (idx >= 4 && crc == crc16_usb_residue) {
-          usb_transfer(pp, ack_encoded, 5, false);
+          if (direct_fs_ack) {
+            usb_transfer_fs_ack(tx_pio, tx_sm, tx_fifo, tx_start_instr, tx_stall_mask);
+          } else {
+            usb_transfer(pp, ack_encoded, 5, false);
+          }
           return idx - 4;
         }
       } else if (handshake == USB_PID_NAK) {
@@ -323,6 +376,16 @@ int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
   }
 
   return -1;
+}
+
+int __no_inline_not_in_flash_func(pio_usb_bus_receive_packet_and_handshake)(
+    pio_port_t *pp, uint8_t handshake) {
+  return receive_packet_and_handshake(pp, handshake, false);
+}
+
+int __no_inline_not_in_flash_func(pio_usb_bus_receive_fs_packet_and_ack)(
+    pio_port_t *pp) {
+  return receive_packet_and_handshake(pp, USB_PID_ACK, true);
 }
 
 static __always_inline void add_pio_host_rx_program(PIO pio,

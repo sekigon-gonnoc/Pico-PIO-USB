@@ -585,7 +585,10 @@ static int __no_inline_not_in_flash_func(usb_in_transaction)(pio_port_t *pp,
   park_receiver(pp);
   pio_usb_bus_send_token(pp, USB_PID_IN, ep->dev_addr, ep->ep_num);
 
-  int receive_len = pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
+  const bool direct_ack = !pp->low_speed && !pp->need_pre;
+  int receive_len = direct_ack
+                        ? pio_usb_bus_receive_fs_packet_and_ack(pp)
+                        : pio_usb_bus_receive_packet_and_handshake(pp, USB_PID_ACK);
   uint8_t const receive_pid = pp->usb_rx_buffer[1];
 
   if (receive_len >= 0) {
